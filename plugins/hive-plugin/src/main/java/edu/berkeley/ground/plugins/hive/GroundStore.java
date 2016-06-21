@@ -2,21 +2,28 @@ package edu.berkeley.ground.plugins.hive;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.api.*;
+import org.apache.hadoop.hive.metastore.model.MDatabase;
 import org.apache.hadoop.hive.metastore.FileMetadataHandler;
 import org.apache.hadoop.hive.metastore.RawStore;
 import org.apache.hadoop.hive.metastore.partition.spec.PartitionSpecProxy;
+import org.apache.hive.common.util.HiveStringUtils;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import edu.berkeley.ground.api.models.Graph;
-import edu.berkeley.ground.api.models.GraphFactory;
+import edu.berkeley.ground.api.models.Node;
+import edu.berkeley.ground.api.models.NodeFactory;
+import edu.berkeley.ground.api.models.NodeVersion;
+import edu.berkeley.ground.api.models.NodeVersionFactory;
+import edu.berkeley.ground.api.models.Tag;
 import edu.berkeley.ground.exceptions.GroundException;
 
 public class GroundStore implements RawStore, Configurable {
@@ -28,6 +35,7 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite ground = null;
     private Configuration conf;
     private int txnNestLevel;
+    private Map<NodeVersion, Database> databases;
 
     public Configuration getConf() {
         // TODO Auto-generated method stub
@@ -75,17 +83,31 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public void createDatabase(Database db) throws InvalidObjectException, MetaException {
-        GraphFactory graph = ground.getGraphFactory();
+        NodeVersionFactory nf = ground.getNodeVersionFactory();
+        Database dbCopy = db.deepCopy();
         try {
-            Graph g = graph.create(db.getName());
+            HashMap<String, Tag> tags = new HashMap<>();
+            Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
+            Optional<String> reference = Optional.of(dbCopy.getLocationUri());
+            Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
+            String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
+            NodeVersion n = nf.create(tagsMap, null, reference, parameters, name, null);
+            databases.put(n, dbCopy);
         } catch (GroundException e) {
+            LOG.error("error creating database " + e);
+            throw new MetaException(e.getMessage());
         }
-
     }
 
     public Database getDatabase(String name) throws NoSuchObjectException {
-        // TODO Auto-generated method stub
-        return null;
+        NodeVersion n;
+        try {
+            n = ground.getNodeVersionFactory().retrieveFromDatabase(name);
+        } catch (GroundException e) {
+            LOG.error("get failed for database ", name, e);
+            throw new NoSuchObjectException(e.getMessage());
+        }
+        return databases.get(n);
     }
 
     public boolean dropDatabase(String dbname) throws NoSuchObjectException, MetaException {

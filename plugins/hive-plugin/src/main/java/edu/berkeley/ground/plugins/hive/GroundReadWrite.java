@@ -7,12 +7,12 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import edu.berkeley.ground.api.models.EdgeFactory;
+import edu.berkeley.ground.api.models.EdgeVersionFactory;
 import edu.berkeley.ground.api.models.GraphFactory;
 import edu.berkeley.ground.db.DBClient;
 import edu.berkeley.ground.db.DBClient.GroundDBConnection;
 import edu.berkeley.ground.exceptions.GroundDBException;
-import scala.xml.factory.NodeFactory;
+import edu.berkeley.ground.api.models.NodeVersionFactory;
 
 public class GroundReadWrite {
 
@@ -27,8 +27,8 @@ public class GroundReadWrite {
     private static final String EDGEFACTORY_CLASS = null;
     private DBClient dbClient;
     private GraphFactory graphFactory;
-    private NodeFactory nodeFactory;
-    private EdgeFactory edgeFactory;
+    private NodeVersionFactory nodeVersionFactory;
+    private EdgeVersionFactory edgeVersionFactory;
     private String factoryType;
     private static GroundDBConnection testConn;
 
@@ -81,12 +81,12 @@ public class GroundReadWrite {
                     graphFactory = (GraphFactory) o;
                 }
                 o = createInstance(nodeFactoryType);
-                if (NodeFactory.class.isAssignableFrom(o.getClass())) {
-                    nodeFactory = (NodeFactory<?>) o;
+                if (NodeVersionFactory.class.isAssignableFrom(o.getClass())) {
+                    nodeVersionFactory = (NodeVersionFactory) o;
                 }
                 o = createInstance(edgeFactoryType);
-                if (EdgeFactory.class.isAssignableFrom(o.getClass())) {
-                    edgeFactory = (EdgeFactory) o;
+                if (EdgeVersionFactory.class.isAssignableFrom(o.getClass())) {
+                    edgeVersionFactory = (EdgeVersionFactory) o;
                 }
             }
         } catch (Exception e) {
@@ -132,20 +132,20 @@ public class GroundReadWrite {
         this.graphFactory = graphFactory;
     }
 
-    public NodeFactory<?> getNodeFactory() {
-        return nodeFactory;
+    public NodeVersionFactory getNodeVersionFactory() {
+        return nodeVersionFactory;
     }
 
-    public void setNodeFactory(NodeFactory<?> nodeFactory) {
-        this.nodeFactory = nodeFactory;
+    public void setNodeFactory(NodeVersionFactory nodeFactory) {
+        this.nodeVersionFactory = nodeFactory;
     }
 
-    public EdgeFactory getEdgeFactory() {
-        return edgeFactory;
+    public EdgeVersionFactory getEdgeVersionFactory() {
+        return edgeVersionFactory;
     }
 
-    public void setEdgeFactory(EdgeFactory edgeFactory) {
-        this.edgeFactory = edgeFactory;
+    public void setEdgeVersionFactory(EdgeVersionFactory edgeVersionFactory) {
+        this.edgeVersionFactory = edgeVersionFactory;
     }
 
     public String getFactoryType() {
