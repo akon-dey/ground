@@ -19,11 +19,15 @@ import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import edu.berkeley.ground.api.models.EdgeVersion;
+import edu.berkeley.ground.api.models.EdgeVersionFactory;
 import edu.berkeley.ground.api.models.Node;
 import edu.berkeley.ground.api.models.NodeFactory;
 import edu.berkeley.ground.api.models.NodeVersion;
 import edu.berkeley.ground.api.models.NodeVersionFactory;
 import edu.berkeley.ground.api.models.Tag;
+import edu.berkeley.ground.api.models.TagFactory;
+import edu.berkeley.ground.exceptions.GroundDBException;
 import edu.berkeley.ground.exceptions.GroundException;
 
 public class GroundStore implements RawStore, Configurable {
@@ -145,9 +149,44 @@ public class GroundStore implements RawStore, Configurable {
         return false;
     }
 
-    public void createTable(Table tbl) throws InvalidObjectException, MetaException {
-        // TODO Auto-generated method stub
-
+    /**
+     * this is not complete. need to update relationship model & fix several things
+     * from Vikram
+     * There would be a "database contains" relationship between D and T, and there would be a "table contains" relationship between T and each attribute.
+     * The types of attributes of those nodes, and the fact that A2 and A4 are partition keys would be tags of those nodes.
+     * The fact that the table T is in a particular file format (Parquet or Avro) would be a tag on the table node. 
+     * 
+     */
+    public void createTable(Table tbl)
+            throws InvalidObjectException, MetaException {
+        openTransaction();
+        // HiveMetaStore above us checks if the table already exists, so we can blindly store it here.
+        try {
+            Table tblCopy = tbl.deepCopy();
+            String dbName = tblCopy.getDbName();
+            NodeVersion nvDb = ground.getNodeVersionFactory().retrieveFromDatabase(dbName);
+            Map<String, Tag> tagsMap = new HashMap<>();
+            Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
+            Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
+            String nodeId = tbl.getTableName();
+            Optional<String> parentId = Optional.of(nvDb.getId());
+            NodeVersion nvTbl = ground.getNodeVersionFactory().create(tags, null, null, parameters, nodeId, parentId);
+            EdgeVersionFactory evf = ground.getEdgeVersionFactory();
+            String edgeId = nvDb.getId() + "to" + nvTbl.getId();
+            EdgeVersion ev = evf.create(null, null, null, null, edgeId, nvDb.getId(), nvTbl.getId(), parentId);
+            Map<String, Tag> dbTags = nvDb.getTags().get();
+            Tag tagTbl = new Tag(null, nvTbl.getId(), Optional.of(nvTbl), null);
+            Tag tagEdge = new Tag(null, edgeId, Optional.of(ev), null);
+            dbTags.put(tagTbl.getKey(), tagTbl);
+            dbTags.put(tagEdge.getKey(), tagEdge);
+            //update database
+            //TODO populate partitions
+            tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
+            tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
+        } catch (GroundException e) {
+            LOG.error("Unable to create table ", e);
+            throw new MetaException("Unable to read from or write to hbase " + e.getMessage());
+        }
     }
 
     public boolean dropTable(String dbName, String tableName)
@@ -157,7 +196,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public Table getTable(String dbName, String tableName) throws MetaException {
-        // TODO Auto-generated method stub
+        //TODO
         return null;
     }
 
