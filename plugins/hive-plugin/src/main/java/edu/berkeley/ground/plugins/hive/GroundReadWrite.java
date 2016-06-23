@@ -13,6 +13,7 @@ import edu.berkeley.ground.db.DBClient;
 import edu.berkeley.ground.db.DBClient.GroundDBConnection;
 import edu.berkeley.ground.exceptions.GroundDBException;
 import edu.berkeley.ground.api.models.NodeVersionFactory;
+import edu.berkeley.ground.api.models.TagFactory;
 
 public class GroundReadWrite {
 
@@ -29,6 +30,7 @@ public class GroundReadWrite {
     private GraphFactory graphFactory;
     private NodeVersionFactory nodeVersionFactory;
     private EdgeVersionFactory edgeVersionFactory;
+    private TagFactory tagFactory;
     private String factoryType;
     private static GroundDBConnection testConn;
 
@@ -65,14 +67,14 @@ public class GroundReadWrite {
             String nodeFactoryType = conf.get(NODEFACTORY_CLASS);
             String edgeFactoryType = conf.get(EDGEFACTORY_CLASS);
             if (TEST_CONN.equals(clientClass)) {
-                conn = testConn;
+                setConn(testConn);
                 LOG.debug("Using test connection.");
             } else {
                 LOG.debug("Instantiating connection class " + clientClass);
                 Object o = createInstance(clientClass);
                 if (DBClient.class.isAssignableFrom(o.getClass())) {
                     dbClient = (DBClient) o;
-                    conn = dbClient.getConnection();
+                    setConn(dbClient.getConnection());
                 } else {
                     throw new IOException(clientClass + " is not an instance of DBClient.");
                 }
@@ -154,5 +156,21 @@ public class GroundReadWrite {
 
     public void setFactoryType(String factoryType) {
         this.factoryType = factoryType;
+    }
+
+    public TagFactory getTagFactory() {
+        return tagFactory;
+    }
+
+    public void setTagFactory(TagFactory tagFactory) {
+        this.tagFactory = tagFactory;
+    }
+
+    public GroundDBConnection getConn() {
+        return conn;
+    }
+
+    public void setConn(GroundDBConnection conn) {
+        this.conn = conn;
     }
 }
