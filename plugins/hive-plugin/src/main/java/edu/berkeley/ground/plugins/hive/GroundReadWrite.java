@@ -26,6 +26,8 @@ public class GroundReadWrite {
     private static final String NODEFACTORY_CLASS = null;
 
     private static final String EDGEFACTORY_CLASS = null;
+
+    public static final String NO_CACHE_CONF = null;
     private DBClient dbClient;
     private GraphFactory graphFactory;
     private NodeVersionFactory nodeVersionFactory;
