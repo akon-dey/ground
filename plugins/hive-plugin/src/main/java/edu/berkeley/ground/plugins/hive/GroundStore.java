@@ -39,8 +39,6 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite ground = null;
     private Configuration conf;
     private int txnNestLevel;
-    private Map<NodeVersion, Database> databases;
-
     public Configuration getConf() {
         // TODO Auto-generated method stub
         return null;
@@ -90,13 +88,14 @@ public class GroundStore implements RawStore, Configurable {
         NodeVersionFactory nf = ground.getNodeVersionFactory();
         Database dbCopy = db.deepCopy();
         try {
-            HashMap<String, Tag> tags = new HashMap<>();
-            Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
+            Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), null); //fix Type field
             Optional<String> reference = Optional.of(dbCopy.getLocationUri());
+            HashMap<String, Tag> tags = new HashMap<>();
+            tags.put(dbCopy.getName(), dbTag);
+            Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
             Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
             String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
             NodeVersion n = nf.create(tagsMap, null, reference, parameters, name, null);
-            databases.put(n, dbCopy);
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
@@ -111,11 +110,13 @@ public class GroundStore implements RawStore, Configurable {
             LOG.error("get failed for database ", name, e);
             throw new NoSuchObjectException(e.getMessage());
         }
-        return databases.get(n);
+        Map<String, Tag> dbTag = n.getTags().get();
+        return (Database) dbTag.get(name).getValue().get();
     }
 
     public boolean dropDatabase(String dbname) throws NoSuchObjectException, MetaException {
-        // TODO Auto-generated method stub
+        Database db = getDatabase(dbname);
+        db.clear(); //TODO
         return false;
     }
 
@@ -150,8 +151,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     /**
-     * this is not complete. need to update relationship model & fix several things
-     * from Vikram
+     *
      * There would be a "database contains" relationship between D and T, and there would be a "table contains" relationship between T and each attribute.
      * The types of attributes of those nodes, and the fact that A2 and A4 are partition keys would be tags of those nodes.
      * The fact that the table T is in a particular file format (Parquet or Avro) would be a tag on the table node. 
@@ -164,21 +164,27 @@ public class GroundStore implements RawStore, Configurable {
         try {
             Table tblCopy = tbl.deepCopy();
             String dbName = tblCopy.getDbName();
-            NodeVersion nvDb = ground.getNodeVersionFactory().retrieveFromDatabase(dbName);
+            String tableName = tblCopy.getTableName();
             Map<String, Tag> tagsMap = new HashMap<>();
+            Tag tblTag = createTag(tableName, tblCopy);
+            tagsMap.put(tbl.getTableName(), tblTag);
+            //create an edge to db which contains this table
+            EdgeVersionFactory evf = ground.getEdgeVersionFactory();
+            String edgeId = dbName + "_to_" + tableName;
+            EdgeVersion ev = evf.create(null, null, null, null, edgeId, dbName, tableName, null /**does it refer to version */);
+            Tag edge = createTag(edgeId, ev);
+            tagsMap.put(edgeId, edge);
+            // add parition keys
+            List<FieldSchema> partitionKeys = tbl.getPartitionKeys();
+            for (FieldSchema f : partitionKeys) {
+                EdgeVersion field = evf.create(null, null, Optional.of(f.getType()), null, f.getName(), tableName, f.getName(), null /**does it refer to version */);
+                tagsMap.put(f.getName(), createTag(f.getName(), field));
+            }
+            //edges and tags for partition-keys
             Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
             Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
-            String nodeId = tbl.getTableName();
-            Optional<String> parentId = Optional.of(nvDb.getId());
-            NodeVersion nvTbl = ground.getNodeVersionFactory().create(tags, null, null, parameters, nodeId, parentId);
-            EdgeVersionFactory evf = ground.getEdgeVersionFactory();
-            String edgeId = nvDb.getId() + "to" + nvTbl.getId();
-            EdgeVersion ev = evf.create(null, null, null, null, edgeId, nvDb.getId(), nvTbl.getId(), parentId);
-            Map<String, Tag> dbTags = nvDb.getTags().get();
-            Tag tagTbl = new Tag(null, nvTbl.getId(), Optional.of(nvTbl), null);
-            Tag tagEdge = new Tag(null, edgeId, Optional.of(ev), null);
-            dbTags.put(tagTbl.getKey(), tagTbl);
-            dbTags.put(tagEdge.getKey(), tagEdge);
+            //new node for this table
+            NodeVersion nvTbl = ground.getNodeVersionFactory().create(tags, null, null, parameters, tableName, null);
             //update database
             //TODO populate partitions
             tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
@@ -189,6 +195,14 @@ public class GroundStore implements RawStore, Configurable {
         }
     }
 
+    private Tag createTag(String id, Object value) {
+        return createTag(null, id, value, null);
+    }
+
+    private Tag createTag(String version, String id, Object value, Optional<edu.berkeley.ground.api.versions.Type> type) {
+        return new Tag(version, id, Optional.of(value), type /**fix type */);
+    }
+
     public boolean dropTable(String dbName, String tableName)
             throws MetaException, NoSuchObjectException, InvalidObjectException, InvalidInputException {
         // TODO Auto-generated method stub
@@ -196,8 +210,15 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public Table getTable(String dbName, String tableName) throws MetaException {
-        //TODO
-        return null;
+        NodeVersion n;
+        try {
+            n = ground.getNodeVersionFactory().retrieveFromDatabase(tableName);
+        } catch (GroundException e) {
+            LOG.error("get failed for database ", tableName, e);
+            throw new MetaException(e.getMessage());
+        }
+        Map<String, Tag> tblTag = n.getTags().get();
+        return (Table) tblTag.get(tableName).getValue().get();
     }
 
     public boolean addPartition(Partition part) throws InvalidObjectException, MetaException {
