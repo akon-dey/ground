@@ -4,52 +4,72 @@ import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.hbase.HBaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
+
 import edu.berkeley.ground.api.models.EdgeVersionFactory;
 import edu.berkeley.ground.api.models.GraphFactory;
+import edu.berkeley.ground.api.models.NodeFactory;
+import edu.berkeley.ground.db.CassandraClient;
 import edu.berkeley.ground.db.DBClient;
 import edu.berkeley.ground.db.DBClient.GroundDBConnection;
 import edu.berkeley.ground.exceptions.GroundDBException;
 import edu.berkeley.ground.api.models.NodeVersionFactory;
 import edu.berkeley.ground.api.models.TagFactory;
+import edu.berkeley.ground.api.models.cassandra.CassandraNodeFactory;
+import edu.berkeley.ground.api.models.cassandra.CassandraNodeVersionFactory;
 
 public class GroundReadWrite {
 
     static final private Logger LOG = LoggerFactory.getLogger(GroundReadWrite.class.getName());
 
-    private static final Object TEST_CONN = null;
+    static final String GRAPHFACTORY_CLASS = "ground.graph.factory";
 
-    private static final String GRAPHFACTORY_CLASS = null;
+    static final String NODEFACTORY_CLASS = "ground.node.factory";
 
-    private static final String NODEFACTORY_CLASS = null;
+    static final String EDGEFACTORY_CLASS = "ground.edge.factory";
 
-    private static final String EDGEFACTORY_CLASS = null;
-
-    public static final String NO_CACHE_CONF = null;
+    static final String NO_CACHE_CONF = "no.use.cache";
     private DBClient dbClient;
     private GraphFactory graphFactory;
     private NodeVersionFactory nodeVersionFactory;
     private EdgeVersionFactory edgeVersionFactory;
     private TagFactory tagFactory;
     private String factoryType;
+
+    @VisibleForTesting final static String TEST_CONN = "test_connection";
     private static GroundDBConnection testConn;
 
     private static Configuration staticConf = null;
     private final Configuration conf;
 
     private GroundDBConnection conn;
+    
 
     private static ThreadLocal<GroundReadWrite> self = new ThreadLocal<GroundReadWrite>() {
         @Override
         protected GroundReadWrite initialValue() {
             if (staticConf == null) {
-                throw new RuntimeException("Attempt to create GroundReadWrite with no " + "configuration set");
+                throw new RuntimeException("Must set conf object before getting an instance");
             }
             return new GroundReadWrite(staticConf);
         }
     };
+
+    /**
+     * Set the configuration for all HBaseReadWrite instances.
+     * @param configuration Configuration object
+     */
+    public static synchronized void setConf(Configuration configuration) {
+      if (staticConf == null) {
+        staticConf = configuration;
+      } else {
+        LOG.info("Attempt to set conf when it has already been set.");
+      }
+    }
 
     /**
      * Get the instance of GroundReadWrite for the current thread.
@@ -68,9 +88,11 @@ public class GroundReadWrite {
             String graphFactoryType = conf.get(GRAPHFACTORY_CLASS);
             String nodeFactoryType = conf.get(NODEFACTORY_CLASS);
             String edgeFactoryType = conf.get(EDGEFACTORY_CLASS);
+            LOG.info("client cass is " + clientClass);
             if (TEST_CONN.equals(clientClass)) {
                 setConn(testConn);
-                LOG.debug("Using test connection.");
+                LOG.info("Using test connection.");
+                createTestInstances();
             } else {
                 LOG.debug("Instantiating connection class " + clientClass);
                 Object o = createInstance(clientClass);
@@ -98,6 +120,12 @@ public class GroundReadWrite {
         }
     }
 
+    private void createTestInstances() {
+        NodeFactory nf = new CassandraNodeFactory(null, null);
+        CassandraClient client = new CassandraClient(factoryType, 0, factoryType, factoryType, factoryType);
+        nodeVersionFactory = new CassandraNodeVersionFactory((CassandraNodeFactory) nf, null, client);
+    }
+
     private Object createInstance(String clientClass)
             throws ClassNotFoundException, InstantiationException, IllegalAccessException {
         Class<?> c = Class.forName(clientClass);
@@ -105,9 +133,13 @@ public class GroundReadWrite {
         return o;
     }
 
-    public static synchronized void setConf(Configuration conf) {
-        // TODO configuration parameters to initialize metastore properties
-
+    /**
+     * Use this for unit testing only, so that a mock connection object can be passed in.
+     * @param connection Mock connection objecct
+     */
+    @VisibleForTesting
+    static void setTestConnection(GroundDBConnection connection) {
+      testConn = connection;
     }
 
     public void close() throws IOException {

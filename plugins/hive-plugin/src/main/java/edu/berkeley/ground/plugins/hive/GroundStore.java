@@ -2,6 +2,7 @@ package edu.berkeley.ground.plugins.hive;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import java.util.Optional;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.api.*;
+import org.apache.hadoop.hive.metastore.hbase.HBaseReadWrite;
 import org.apache.hadoop.hive.metastore.model.MDatabase;
 import org.apache.hadoop.hive.metastore.FileMetadataHandler;
 import org.apache.hadoop.hive.metastore.RawStore;
@@ -39,6 +41,10 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite ground = null;
     private Configuration conf;
     private int txnNestLevel;
+
+    public GroundStore() {
+    }
+
     public Configuration getConf() {
         // TODO Auto-generated method stub
         return null;
@@ -85,7 +91,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public void createDatabase(Database db) throws InvalidObjectException, MetaException {
-        NodeVersionFactory nf = ground.getNodeVersionFactory();
+        NodeVersionFactory nf = getGround().getNodeVersionFactory();
         Database dbCopy = db.deepCopy();
         try {
             Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), null); //fix Type field
@@ -105,7 +111,7 @@ public class GroundStore implements RawStore, Configurable {
     public Database getDatabase(String name) throws NoSuchObjectException {
         NodeVersion n;
         try {
-            n = ground.getNodeVersionFactory().retrieveFromDatabase(name);
+            n = getGround().getNodeVersionFactory().retrieveFromDatabase(name);
         } catch (GroundException e) {
             LOG.error("get failed for database ", name, e);
             throw new NoSuchObjectException(e.getMessage());
@@ -131,8 +137,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public List<String> getAllDatabases() throws MetaException {
-        // TODO Auto-generated method stub
-        return null;
+        return new ArrayList<>();
     }
 
     public boolean createType(Type type) {
@@ -169,7 +174,7 @@ public class GroundStore implements RawStore, Configurable {
             Tag tblTag = createTag(tableName, tblCopy);
             tagsMap.put(tbl.getTableName(), tblTag);
             //create an edge to db which contains this table
-            EdgeVersionFactory evf = ground.getEdgeVersionFactory();
+            EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
             String edgeId = dbName + "_to_" + tableName;
             EdgeVersion ev = evf.create(null, null, null, null, edgeId, dbName, tableName, null /**does it refer to version */);
             Tag edge = createTag(edgeId, ev);
@@ -184,7 +189,7 @@ public class GroundStore implements RawStore, Configurable {
             Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
             Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
             //new node for this table
-            NodeVersion nvTbl = ground.getNodeVersionFactory().create(tags, null, null, parameters, tableName, null);
+            NodeVersion nvTbl = getGround().getNodeVersionFactory().create(tags, null, null, parameters, tableName, null);
             //update database
             //TODO populate partitions
             tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
@@ -212,7 +217,7 @@ public class GroundStore implements RawStore, Configurable {
     public Table getTable(String dbName, String tableName) throws MetaException {
         NodeVersion n;
         try {
-            n = ground.getNodeVersionFactory().retrieveFromDatabase(tableName);
+            n = getGround().getNodeVersionFactory().retrieveFromDatabase(tableName);
         } catch (GroundException e) {
             LOG.error("get failed for database ", tableName, e);
             throw new MetaException(e.getMessage());
@@ -494,8 +499,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public List<String> listRoleNames() {
-        // TODO Auto-generated method stub
-        return null;
+        return new ArrayList<>();
     }
 
     public List<Role> listRoles(String principalName, PrincipalType principalType) {
