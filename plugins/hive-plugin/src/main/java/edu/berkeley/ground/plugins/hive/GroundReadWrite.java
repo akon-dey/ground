@@ -1,6 +1,8 @@
 package edu.berkeley.ground.plugins.hive;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -12,15 +14,18 @@ import com.google.common.annotations.VisibleForTesting;
 
 import edu.berkeley.ground.api.models.EdgeVersionFactory;
 import edu.berkeley.ground.api.models.GraphFactory;
+import edu.berkeley.ground.api.models.GraphVersionFactory;
 import edu.berkeley.ground.api.models.NodeFactory;
 import edu.berkeley.ground.db.CassandraClient;
 import edu.berkeley.ground.db.DBClient;
 import edu.berkeley.ground.db.DBClient.GroundDBConnection;
 import edu.berkeley.ground.exceptions.GroundDBException;
 import edu.berkeley.ground.api.models.NodeVersionFactory;
+import edu.berkeley.ground.api.models.RichVersionFactory;
 import edu.berkeley.ground.api.models.TagFactory;
 import edu.berkeley.ground.api.models.cassandra.CassandraNodeFactory;
 import edu.berkeley.ground.api.models.cassandra.CassandraNodeVersionFactory;
+import edu.berkeley.ground.api.versions.ItemFactory;
 
 public class GroundReadWrite {
 
@@ -34,7 +39,7 @@ public class GroundReadWrite {
 
     static final String NO_CACHE_CONF = "no.use.cache";
     private DBClient dbClient;
-    private GraphFactory graphFactory;
+    private GraphVersionFactory graphFactory;
     private NodeVersionFactory nodeVersionFactory;
     private EdgeVersionFactory edgeVersionFactory;
     private TagFactory tagFactory;
@@ -103,8 +108,8 @@ public class GroundReadWrite {
                     throw new IOException(clientClass + " is not an instance of DBClient.");
                 }
                 o = createInstance(graphFactoryType);
-                if (GraphFactory.class.isAssignableFrom(o.getClass())) {
-                    graphFactory = (GraphFactory) o;
+                if (GraphVersionFactory.class.isAssignableFrom(o.getClass())) {
+                    graphFactory = (GraphVersionFactory) o;
                 }
                 o = createInstance(nodeFactoryType);
                 if (NodeVersionFactory.class.isAssignableFrom(o.getClass())) {
@@ -122,15 +127,30 @@ public class GroundReadWrite {
 
     private void createTestInstances() {
         NodeFactory nf = new CassandraNodeFactory(null, null);
-        CassandraClient client = new CassandraClient(factoryType, 0, factoryType, factoryType, factoryType);
+        CassandraClient client = new CassandraClient("localhost", 8080, "default",
+        		"testuser", "");
         nodeVersionFactory = new CassandraNodeVersionFactory((CassandraNodeFactory) nf, null, client);
     }
 
     private Object createInstance(String clientClass)
-            throws ClassNotFoundException, InstantiationException, IllegalAccessException {
-        Class<?> c = Class.forName(clientClass);
-        Object o = c.newInstance();
-        return o;
+            throws ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException,
+            SecurityException, IllegalArgumentException, InvocationTargetException {
+    	if (clientClass.contains("NodeVersion")) {
+        	Constructor<?> cons = Class.forName(clientClass).getConstructor(NodeFactory.class,
+        			RichVersionFactory.class, DBClient.class);
+            return cons.newInstance(null, null, null); //TODO use conf
+    	}
+    	if (clientClass.contains("EdgeVersion")) {
+        	Constructor<?> cons = Class.forName(clientClass).getConstructor(EdgeVersionFactory.class,
+        			ItemFactory.class, DBClient.class);
+            return cons.newInstance(null, null, null); //TODO use conf
+    	}
+    	if (clientClass.contains("GraphVersion")) {
+        	Constructor<?> cons = Class.forName(clientClass).getConstructor(GraphFactory.class,
+        			RichVersionFactory.class, DBClient.class);
+            return cons.newInstance(null, null, null); //TODO use conf
+    	}
+    	return null;
     }
 
     /**
@@ -160,11 +180,11 @@ public class GroundReadWrite {
         }
     }
 
-    public GraphFactory getGraphFactory() {
+    public GraphVersionFactory getGraphFactory() {
         return graphFactory;
     }
 
-    public void setGraphFactory(GraphFactory graphFactory) {
+    public void setGraphFactory(GraphVersionFactory graphFactory) {
         this.graphFactory = graphFactory;
     }
 
