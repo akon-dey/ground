@@ -112,7 +112,7 @@ public class TestGroundMetaStore {
         GroundReadWrite.setConf(conf);
         groundStore = new GroundStore();
         groundStore.setConf(conf);
-        dropAllStoreObjects(groundStore);
+        // dropAllStoreObjects(groundStore);
     }
 
     @After
@@ -148,7 +148,7 @@ public class TestGroundMetaStore {
     @Test
     public void testTableOps()
             throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
-        Database db1 = new Database(DB1, "description", "locationurl", null);
+        Database db1 = new Database(DB1, "description", "locationurl", new HashMap<String, String>());
         groundStore.createDatabase(db1);
         StorageDescriptor sd = new StorageDescriptor(null, "location", null, null, false, 0,
                 new SerDeInfo("SerDeName", "serializationLib", null), null, null, null);
@@ -174,124 +174,5 @@ public class TestGroundMetaStore {
         Assert.assertEquals(0, tables.size());
 
         groundStore.dropDatabase(DB1);
-    }
-
-    /**
-     * Tests partition operations
-     */
-    @Test
-    public void testPartitionOps()
-            throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
-        Database db1 = new Database(DB1, "description", "locationurl", null);
-        groundStore.createDatabase(db1);
-        StorageDescriptor sd = new StorageDescriptor(null, "location", null, null, false, 0,
-                new SerDeInfo("SerDeName", "serializationLib", null), null, null, null);
-        HashMap<String, String> tableParams = new HashMap<String, String>();
-        tableParams.put("EXTERNAL", "false");
-        FieldSchema partitionKey1 = new FieldSchema("Country", serdeConstants.STRING_TYPE_NAME, "");
-        FieldSchema partitionKey2 = new FieldSchema("State", serdeConstants.STRING_TYPE_NAME, "");
-        Table tbl1 = new Table(TABLE1, DB1, "owner", 1, 2, 3, sd, Arrays.asList(partitionKey1, partitionKey2),
-                tableParams, "viewOriginalText", "viewExpandedText", "MANAGED_TABLE");
-        groundStore.createTable(tbl1);
-        HashMap<String, String> partitionParams = new HashMap<String, String>();
-        partitionParams.put("PARTITION_LEVEL_PRIVILEGE", "true");
-        List<String> value1 = Arrays.asList("US", "CA");
-        Partition part1 = new Partition(value1, DB1, TABLE1, 111, 111, sd, partitionParams);
-        groundStore.addPartition(part1);
-        List<String> value2 = Arrays.asList("US", "MA");
-        Partition part2 = new Partition(value2, DB1, TABLE1, 222, 222, sd, partitionParams);
-        groundStore.addPartition(part2);
-
-        Deadline.startTimer("getPartition");
-        List<Partition> partitions = groundStore.getPartitions(DB1, TABLE1, 10);
-        Assert.assertEquals(2, partitions.size());
-        Assert.assertEquals(111, partitions.get(0).getCreateTime());
-        Assert.assertEquals(222, partitions.get(1).getCreateTime());
-
-        int numPartitions = groundStore.getNumPartitionsByFilter(DB1, TABLE1, "");
-        Assert.assertEquals(partitions.size(), numPartitions);
-
-        numPartitions = groundStore.getNumPartitionsByFilter(DB1, TABLE1, "country = \"US\"");
-        Assert.assertEquals(2, numPartitions);
-
-        groundStore.dropPartition(DB1, TABLE1, value1);
-        partitions = groundStore.getPartitions(DB1, TABLE1, 10);
-        Assert.assertEquals(1, partitions.size());
-        Assert.assertEquals(222, partitions.get(0).getCreateTime());
-
-        groundStore.dropPartition(DB1, TABLE1, value2);
-        groundStore.dropTable(DB1, TABLE1);
-        groundStore.dropDatabase(DB1);
-    }
-
-    /**
-     * Test master keys operation
-     */
-    @Test
-    public void testMasterKeyOps() throws MetaException, NoSuchObjectException {
-        int id1 = groundStore.addMasterKey(KEY1);
-        int id2 = groundStore.addMasterKey(KEY2);
-
-        String[] keys = groundStore.getMasterKeys();
-        Assert.assertEquals(2, keys.length);
-        Assert.assertEquals(KEY1, keys[0]);
-        Assert.assertEquals(KEY2, keys[1]);
-
-        groundStore.updateMasterKey(id1, "new" + KEY1);
-        groundStore.updateMasterKey(id2, "new" + KEY2);
-        keys = groundStore.getMasterKeys();
-        Assert.assertEquals(2, keys.length);
-        Assert.assertEquals("new" + KEY1, keys[0]);
-        Assert.assertEquals("new" + KEY2, keys[1]);
-
-        groundStore.removeMasterKey(id1);
-        keys = groundStore.getMasterKeys();
-        Assert.assertEquals(1, keys.length);
-        Assert.assertEquals("new" + KEY2, keys[0]);
-
-        groundStore.removeMasterKey(id2);
-    }
-
-    /**
-     * Test role operation
-     */
-    @Test
-    public void testRoleOps() throws InvalidObjectException, MetaException, NoSuchObjectException {
-        groundStore.addRole(ROLE1, OWNER);
-        groundStore.addRole(ROLE2, OWNER);
-        List<String> roles = groundStore.listRoleNames();
-        Assert.assertEquals(2, roles.size());
-        Assert.assertEquals(ROLE2, roles.get(1));
-        Role role1 = groundStore.getRole(ROLE1);
-        Assert.assertEquals(OWNER, role1.getOwnerName());
-        groundStore.grantRole(role1, USER1, PrincipalType.USER, OWNER, PrincipalType.ROLE, true);
-        groundStore.revokeRole(role1, USER1, PrincipalType.USER, false);
-        groundStore.removeRole(ROLE1);
-    }
-
-    public static void dropAllStoreObjects(GroundStore store)
-            throws MetaException, InvalidObjectException, InvalidInputException {
-        try {
-            Deadline.registerIfNot(100000);
-            List<String> dbs = store.getAllDatabases();
-            for (int i = 0; i < dbs.size(); i++) {
-                String db = dbs.get(i);
-                List<String> tbls = store.getAllTables(db);
-                for (String tbl : tbls) {
-                    Deadline.startTimer("getPartition");
-                    List<Partition> parts = store.getPartitions(db, tbl, 100);
-                    for (Partition part : parts) {
-                        store.dropPartition(db, tbl, part.getValues());
-                    }
-                    store.dropTable(db, tbl);
-                }
-                store.dropDatabase(db);
-            }
-            List<String> roles = store.listRoleNames();
-            for (String role : roles) {
-                store.removeRole(role);
-            }
-        } catch (NoSuchObjectException e) {
-        }
     }
 }

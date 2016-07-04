@@ -96,12 +96,14 @@ public class GroundStore implements RawStore, Configurable {
         try {
             Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), null); //fix Type field
             Optional<String> reference = Optional.of(dbCopy.getLocationUri());
+            Optional<String> versionId = Optional.of(dbCopy.getName());
+            Optional<String> parentId = Optional.of("1.0.0");
             HashMap<String, Tag> tags = new HashMap<>();
             tags.put(dbCopy.getName(), dbTag);
             Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
             Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
             String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
-            NodeVersion n = nf.create(tagsMap, null, reference, parameters, name, null);
+            NodeVersion n = nf.create(tagsMap, versionId, reference, parameters, name, parentId);
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
