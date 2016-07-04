@@ -19,13 +19,24 @@ import edu.berkeley.ground.api.models.NodeFactory;
 import edu.berkeley.ground.db.CassandraClient;
 import edu.berkeley.ground.db.DBClient;
 import edu.berkeley.ground.db.DBClient.GroundDBConnection;
+import edu.berkeley.ground.db.PostgresClient;
 import edu.berkeley.ground.exceptions.GroundDBException;
 import edu.berkeley.ground.api.models.NodeVersionFactory;
 import edu.berkeley.ground.api.models.RichVersionFactory;
+import edu.berkeley.ground.api.models.StructureFactory;
+import edu.berkeley.ground.api.models.StructureVersionFactory;
 import edu.berkeley.ground.api.models.TagFactory;
 import edu.berkeley.ground.api.models.cassandra.CassandraNodeFactory;
 import edu.berkeley.ground.api.models.cassandra.CassandraNodeVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresNodeFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresNodeVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresRichVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresStructureFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresStructureVersionFactory;
 import edu.berkeley.ground.api.versions.ItemFactory;
+import edu.berkeley.ground.api.versions.VersionFactory;
+import edu.berkeley.ground.api.versions.postgres.PostgresItemFactory;
+import edu.berkeley.ground.api.versions.postgres.PostgresVersionFactory;
 
 public class GroundReadWrite {
 
@@ -125,11 +136,21 @@ public class GroundReadWrite {
         }
     }
 
-    private void createTestInstances() {
-        NodeFactory nf = new CassandraNodeFactory(null, null);
-        CassandraClient client = new CassandraClient("localhost", 8080, "default",
-        		"testuser", "");
-        nodeVersionFactory = new CassandraNodeVersionFactory((CassandraNodeFactory) nf, null, client);
+    private void createTestInstances() throws GroundDBException {
+        DBClient client = new PostgresClient("127.0.0.1", 5432, "default",
+        		"test", "test");
+        NodeFactory nf = new PostgresNodeFactory(null, null);
+        VersionFactory vf = new PostgresVersionFactory();
+        ItemFactory iff = new PostgresItemFactory(null);
+        StructureFactory sf = new PostgresStructureFactory((PostgresItemFactory) iff,
+        		(PostgresClient) client);
+        StructureVersionFactory svf = new PostgresStructureVersionFactory((PostgresStructureFactory) sf,
+        		(PostgresVersionFactory) vf, (PostgresClient) client);
+        RichVersionFactory rf = new PostgresRichVersionFactory((PostgresVersionFactory) vf, (PostgresStructureVersionFactory) svf, null, null);
+
+        LOG.debug("postgresclient " + client.getConnection().toString());
+        nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nf,
+        		(PostgresRichVersionFactory) rf, (PostgresClient) client);
     }
 
     private Object createInstance(String clientClass)
@@ -138,6 +159,7 @@ public class GroundReadWrite {
     	if (clientClass.contains("NodeVersion")) {
         	Constructor<?> cons = Class.forName(clientClass).getConstructor(NodeFactory.class,
         			RichVersionFactory.class, DBClient.class);
+        	// get details from conf
             return cons.newInstance(null, null, null); //TODO use conf
     	}
     	if (clientClass.contains("EdgeVersion")) {
