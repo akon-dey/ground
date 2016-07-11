@@ -6,7 +6,6 @@ import java.lang.reflect.InvocationTargetException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.hbase.HBaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,18 +15,18 @@ import edu.berkeley.ground.api.models.EdgeVersionFactory;
 import edu.berkeley.ground.api.models.GraphFactory;
 import edu.berkeley.ground.api.models.GraphVersionFactory;
 import edu.berkeley.ground.api.models.NodeFactory;
-import edu.berkeley.ground.db.CassandraClient;
 import edu.berkeley.ground.db.DBClient;
 import edu.berkeley.ground.db.DBClient.GroundDBConnection;
 import edu.berkeley.ground.db.PostgresClient;
 import edu.berkeley.ground.exceptions.GroundDBException;
+import edu.berkeley.ground.plugins.hive.util.TestUtils;
 import edu.berkeley.ground.api.models.NodeVersionFactory;
 import edu.berkeley.ground.api.models.RichVersionFactory;
 import edu.berkeley.ground.api.models.StructureFactory;
 import edu.berkeley.ground.api.models.StructureVersionFactory;
 import edu.berkeley.ground.api.models.TagFactory;
-import edu.berkeley.ground.api.models.cassandra.CassandraNodeFactory;
-import edu.berkeley.ground.api.models.cassandra.CassandraNodeVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresEdgeFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresEdgeVersionFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresNodeFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresNodeVersionFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresRichVersionFactory;
@@ -37,6 +36,8 @@ import edu.berkeley.ground.api.versions.ItemFactory;
 import edu.berkeley.ground.api.versions.VersionFactory;
 import edu.berkeley.ground.api.versions.postgres.PostgresItemFactory;
 import edu.berkeley.ground.api.versions.postgres.PostgresVersionFactory;
+import edu.berkeley.ground.api.versions.postgres.PostgresVersionHistoryDAGFactory;
+import edu.berkeley.ground.api.versions.postgres.PostgresVersionSuccessorFactory;
 
 public class GroundReadWrite {
 
@@ -56,14 +57,14 @@ public class GroundReadWrite {
     private TagFactory tagFactory;
     private String factoryType;
 
-    @VisibleForTesting final static String TEST_CONN = "test_connection";
+    @VisibleForTesting
+    final static String TEST_CONN = "test_connection";
     private static GroundDBConnection testConn;
 
     private static Configuration staticConf = null;
     private final Configuration conf;
 
     private GroundDBConnection conn;
-    
 
     private static ThreadLocal<GroundReadWrite> self = new ThreadLocal<GroundReadWrite>() {
         @Override
@@ -77,14 +78,16 @@ public class GroundReadWrite {
 
     /**
      * Set the configuration for all HBaseReadWrite instances.
-     * @param configuration Configuration object
+     * 
+     * @param configuration
+     *            Configuration object
      */
     public static synchronized void setConf(Configuration configuration) {
-      if (staticConf == null) {
-        staticConf = configuration;
-      } else {
-        LOG.info("Attempt to set conf when it has already been set.");
-      }
+        if (staticConf == null) {
+            staticConf = configuration;
+        } else {
+            LOG.info("Attempt to set conf when it has already been set.");
+        }
     }
 
     /**
@@ -137,51 +140,60 @@ public class GroundReadWrite {
     }
 
     private void createTestInstances() throws GroundDBException {
-        DBClient client = new PostgresClient("127.0.0.1", 5432, "default",
-        		"test", "test");
-        NodeFactory nf = new PostgresNodeFactory(null, null);
+        // TODO move this
+        dbClient = new PostgresClient("127.0.0.1", 5432, "default", "test", "test");
+        PostgresVersionSuccessorFactory succ = new PostgresVersionSuccessorFactory();
+        PostgresVersionHistoryDAGFactory dagFactory = new PostgresVersionHistoryDAGFactory(succ);
+        PostgresItemFactory itemFactory = new PostgresItemFactory(dagFactory);
+        NodeFactory nf = new PostgresNodeFactory(itemFactory, (PostgresClient) dbClient);
         VersionFactory vf = new PostgresVersionFactory();
         ItemFactory iff = new PostgresItemFactory(null);
-        StructureFactory sf = new PostgresStructureFactory((PostgresItemFactory) iff,
-        		(PostgresClient) client);
+        StructureFactory sf = new PostgresStructureFactory((PostgresItemFactory) iff, (PostgresClient) dbClient);
         StructureVersionFactory svf = new PostgresStructureVersionFactory((PostgresStructureFactory) sf,
-        		(PostgresVersionFactory) vf, (PostgresClient) client);
-        RichVersionFactory rf = new PostgresRichVersionFactory((PostgresVersionFactory) vf, (PostgresStructureVersionFactory) svf, null, null);
+                (PostgresVersionFactory) vf, (PostgresClient) dbClient);
+        RichVersionFactory rf = new PostgresRichVersionFactory((PostgresVersionFactory) vf,
+                (PostgresStructureVersionFactory) svf, null, null);
 
-        LOG.debug("postgresclient " + client.getConnection().toString());
-        nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nf,
-        		(PostgresRichVersionFactory) rf, (PostgresClient) client);
+        PostgresEdgeFactory pef = new PostgresEdgeFactory(itemFactory, (PostgresClient) dbClient);
+        edgeVersionFactory = new PostgresEdgeVersionFactory(pef, (PostgresRichVersionFactory) rf,
+                (PostgresClient) dbClient);
+        LOG.info("postgresclient " + dbClient.getConnection().toString());
+        nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nf, (PostgresRichVersionFactory) rf,
+                (PostgresClient) dbClient);
     }
 
     private Object createInstance(String clientClass)
             throws ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException,
             SecurityException, IllegalArgumentException, InvocationTargetException {
-    	if (clientClass.contains("NodeVersion")) {
-        	Constructor<?> cons = Class.forName(clientClass).getConstructor(NodeFactory.class,
-        			RichVersionFactory.class, DBClient.class);
-        	// get details from conf
-            return cons.newInstance(null, null, null); //TODO use conf
-    	}
-    	if (clientClass.contains("EdgeVersion")) {
-        	Constructor<?> cons = Class.forName(clientClass).getConstructor(EdgeVersionFactory.class,
-        			ItemFactory.class, DBClient.class);
-            return cons.newInstance(null, null, null); //TODO use conf
-    	}
-    	if (clientClass.contains("GraphVersion")) {
-        	Constructor<?> cons = Class.forName(clientClass).getConstructor(GraphFactory.class,
-        			RichVersionFactory.class, DBClient.class);
-            return cons.newInstance(null, null, null); //TODO use conf
-    	}
-    	return null;
+        if (clientClass.contains("NodeVersion")) {
+            Constructor<?> cons = Class.forName(clientClass).getConstructor(NodeFactory.class, RichVersionFactory.class,
+                    DBClient.class);
+            // get details from conf
+            return cons.newInstance(null, null, null); // TODO use conf
+        }
+        if (clientClass.contains("EdgeVersion")) {
+            Constructor<?> cons = Class.forName(clientClass).getConstructor(EdgeVersionFactory.class, ItemFactory.class,
+                    DBClient.class);
+            return cons.newInstance(null, null, null); // TODO use conf
+        }
+        if (clientClass.contains("GraphVersion")) {
+            Constructor<?> cons = Class.forName(clientClass).getConstructor(GraphFactory.class,
+                    RichVersionFactory.class, DBClient.class);
+            return cons.newInstance(null, null, null); // TODO use conf
+        }
+        return null;
     }
 
     /**
-     * Use this for unit testing only, so that a mock connection object can be passed in.
-     * @param connection Mock connection objecct
+     * Use this for unit testing only, so that a mock connection object can be
+     * passed in.
+     * 
+     * @param connection
+     *            Mock connection objecct
      */
     @VisibleForTesting
     static void setTestConnection(GroundDBConnection connection) {
-      testConn = connection;
+        testConn = connection;
     }
 
     public void close() throws IOException {
