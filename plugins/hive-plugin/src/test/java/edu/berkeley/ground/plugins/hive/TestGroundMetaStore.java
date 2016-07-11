@@ -55,7 +55,7 @@ import edu.berkeley.ground.api.models.cassandra.CassandraEdgeVersionFactory;
 import edu.berkeley.ground.api.models.cassandra.CassandraGraphVersionFactory;
 import edu.berkeley.ground.api.models.cassandra.CassandraNodeVersionFactory;
 
-public class TestGroundMetaStore {
+public class TestGroundMetastore {
     private GroundStore groundStore = null;
     static final String GRAPHFACTORY_CLASS = "ground.graph.factory";
 
@@ -133,13 +133,6 @@ public class TestGroundMetaStore {
         Assert.assertEquals(2, databases.size());
         Assert.assertEquals(DB1, databases.get(0));
         Assert.assertEquals(DB2, databases.get(1));
-
-        groundStore.dropDatabase(DB1);
-        databases = groundStore.getAllDatabases();
-        Assert.assertEquals(1, databases.size());
-        Assert.assertEquals(DB2, databases.get(0));
-
-        groundStore.dropDatabase(DB2);
     }
 
     /**
