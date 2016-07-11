@@ -154,18 +154,5 @@ public class TestGroundMetastore {
         List<String> tables = groundStore.getAllTables(DB1);
         Assert.assertEquals(1, tables.size());
         Assert.assertEquals(TABLE1, tables.get(0));
-
-        Table newTbl1 = new Table("new" + TABLE1, DB1, "owner", 1, 2, 3, sd, null, params, "viewOriginalText",
-                "viewExpandedText", "MANAGED_TABLE");
-        groundStore.alterTable(DB1, TABLE1, newTbl1);
-        tables = groundStore.getTables(DB1, "new*");
-        Assert.assertEquals(1, tables.size());
-        Assert.assertEquals("new" + TABLE1, tables.get(0));
-
-        groundStore.dropTable(DB1, "new" + TABLE1);
-        tables = groundStore.getAllTables(DB1);
-        Assert.assertEquals(0, tables.size());
-
-        groundStore.dropDatabase(DB1);
     }
 }
