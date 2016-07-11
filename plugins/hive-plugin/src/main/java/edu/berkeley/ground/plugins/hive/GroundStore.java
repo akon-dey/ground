@@ -45,6 +45,8 @@ public class GroundStore implements RawStore, Configurable {
     private Configuration conf;
     private int txnNestLevel;
     private List<String> dbList = Collections.synchronizedList(new ArrayList<String>());
+    private Map<String, List<String>> dbTable =
+            Collections.synchronizedMap(new HashMap<String, List<String>> ());
 
     public GroundStore() {
     }
@@ -215,6 +217,16 @@ public class GroundStore implements RawStore, Configurable {
             // TODO populate partitions
             tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
             tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
+            synchronized (dbTable) {
+                if (dbTable.containsKey(tblCopy.getDbName())) {
+                  dbTable.get(tblCopy.getDbName()).add(tblCopy.getTableName());
+                }
+                else {
+                  List<String> valuesList = new ArrayList<String>();
+                  valuesList.add(tblCopy.getTableName());
+                  dbTable.put(tblCopy.getDbName(), valuesList);
+                }
+            }
         } catch (GroundException e) {
             LOG.error("Unable to create table ", e);
             throw new MetaException("Unable to read from or write ground database" + e.getMessage());
@@ -313,8 +325,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public List<String> getAllTables(String dbName) throws MetaException {
-        // TODO Auto-generated method stub
-        return null;
+        return dbTable.get(dbName);
     }
 
     public List<String> listTableNamesByFilter(String dbName, String filter, short max_tables)
