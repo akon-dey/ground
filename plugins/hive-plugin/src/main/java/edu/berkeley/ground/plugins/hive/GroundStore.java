@@ -3,6 +3,7 @@ package edu.berkeley.ground.plugins.hive;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,8 @@ import edu.berkeley.ground.exceptions.GroundException;
 
 public class GroundStore implements RawStore, Configurable {
 
+    private static final String TEST = "test";
+
     static final private Logger LOG = LoggerFactory.getLogger(GroundStore.class.getName());
 
     // Do not access this directly, call getHBase to make sure it is
@@ -41,6 +44,7 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite ground = null;
     private Configuration conf;
     private int txnNestLevel;
+    private List<String> dbList = Collections.synchronizedList(new ArrayList<String>());
 
     public GroundStore() {
     }
@@ -94,16 +98,20 @@ public class GroundStore implements RawStore, Configurable {
         NodeVersionFactory nf = getGround().getNodeVersionFactory();
         Database dbCopy = db.deepCopy();
         try {
-            Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), null); //fix Type field
+            edu.berkeley.ground.api.versions.Type dbType = edu.berkeley.ground.api.versions.Type.fromString("string");
+            Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), Optional.of(dbType)); // fix
+                                                                                                   // Type
+                                                                                                   // field
             Optional<String> reference = Optional.of(dbCopy.getLocationUri());
-            Optional<String> versionId = Optional.of(dbCopy.getName());
-            Optional<String> parentId = Optional.of("1.0.0");
+            Optional<String> versionId = Optional.empty();
+            Optional<String> parentId = Optional.empty(); // fix
             HashMap<String, Tag> tags = new HashMap<>();
             tags.put(dbCopy.getName(), dbTag);
             Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
             Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
             String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
             NodeVersion n = nf.create(tagsMap, versionId, reference, parameters, name, parentId);
+            dbList.add(db.getName());
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
@@ -124,7 +132,7 @@ public class GroundStore implements RawStore, Configurable {
 
     public boolean dropDatabase(String dbname) throws NoSuchObjectException, MetaException {
         Database db = getDatabase(dbname);
-        db.clear(); //TODO
+        db.clear(); // TODO
         return false;
     }
 
@@ -139,7 +147,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public List<String> getAllDatabases() throws MetaException {
-        return new ArrayList<>();
+        return dbList;
     }
 
     public boolean createType(Type type) {
@@ -159,15 +167,18 @@ public class GroundStore implements RawStore, Configurable {
 
     /**
      *
-     * There would be a "database contains" relationship between D and T, and there would be a "table contains" relationship between T and each attribute.
-     * The types of attributes of those nodes, and the fact that A2 and A4 are partition keys would be tags of those nodes.
-     * The fact that the table T is in a particular file format (Parquet or Avro) would be a tag on the table node. 
+     * There would be a "database contains" relationship between D and T, and
+     * there would be a "table contains" relationship between T and each
+     * attribute. The types of attributes of those nodes, and the fact that A2
+     * and A4 are partition keys would be tags of those nodes. The fact that the
+     * table T is in a particular file format (Parquet or Avro) would be a tag
+     * on the table node.
      * 
      */
-    public void createTable(Table tbl)
-            throws InvalidObjectException, MetaException {
+    public void createTable(Table tbl) throws InvalidObjectException, MetaException {
         openTransaction();
-        // HiveMetaStore above us checks if the table already exists, so we can blindly store it here.
+        // HiveMetaStore above us checks if the table already exists, so we can
+        // blindly store it here.
         try {
             Table tblCopy = tbl.deepCopy();
             String dbName = tblCopy.getDbName();
@@ -175,39 +186,49 @@ public class GroundStore implements RawStore, Configurable {
             Map<String, Tag> tagsMap = new HashMap<>();
             Tag tblTag = createTag(tableName, tblCopy);
             tagsMap.put(tbl.getTableName(), tblTag);
-            //create an edge to db which contains this table
+            // create an edge to db which contains this table
             EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
-            String edgeId = dbName + "_to_" + tableName;
-            EdgeVersion ev = evf.create(null, null, null, null, edgeId, dbName, tableName, null /**does it refer to version */);
+            String edgeId = dbName + "." + tableName;
+            EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), edgeId,
+                    dbName, tableName, Optional.empty() /** does it refer to version */
+            );
             Tag edge = createTag(edgeId, ev);
             tagsMap.put(edgeId, edge);
             // add parition keys
             List<FieldSchema> partitionKeys = tbl.getPartitionKeys();
-            for (FieldSchema f : partitionKeys) {
-                EdgeVersion field = evf.create(null, null, Optional.of(f.getType()), null, f.getName(), tableName, f.getName(), null /**does it refer to version */);
-                tagsMap.put(f.getName(), createTag(f.getName(), field));
+            if (partitionKeys != null) {
+                for (FieldSchema f : partitionKeys) {
+                    EdgeVersion field = evf.create(Optional.empty(), Optional.empty(), Optional.of(f.getType()),
+                            Optional.empty(), f.getName(), tableName, f.getName(),
+                            Optional.empty() /** does it refer to version */
+                    );
+                    tagsMap.put(f.getName(), createTag(f.getName(), field));
+                }
             }
-            //edges and tags for partition-keys
+            // edges and tags for partition-keys
             Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
             Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
-            //new node for this table
-            NodeVersion nvTbl = getGround().getNodeVersionFactory().create(tags, null, null, parameters, tableName, null);
-            //update database
-            //TODO populate partitions
+            // new node for this table
+            NodeVersion nvTbl = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
+                    parameters, tableName, Optional.empty());
+            // update database
+            // TODO populate partitions
             tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
             tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
         } catch (GroundException e) {
             LOG.error("Unable to create table ", e);
-            throw new MetaException("Unable to read from or write to hbase " + e.getMessage());
+            throw new MetaException("Unable to read from or write ground database" + e.getMessage());
         }
     }
 
     private Tag createTag(String id, Object value) {
-        return createTag(null, id, value, null);
+        return createTag("1.0.0", id, value, Optional.empty());
     }
 
-    private Tag createTag(String version, String id, Object value, Optional<edu.berkeley.ground.api.versions.Type> type) {
-        return new Tag(version, id, Optional.of(value), type /**fix type */);
+    private Tag createTag(String version, String id, Object value,
+            Optional<edu.berkeley.ground.api.versions.Type> type) {
+        return new Tag(version, id, Optional.of(value), type /** fix type */
+        );
     }
 
     public boolean dropTable(String dbName, String tableName)
