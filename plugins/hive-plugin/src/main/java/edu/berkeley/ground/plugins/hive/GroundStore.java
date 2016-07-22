@@ -97,13 +97,12 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public void createDatabase(Database db) throws InvalidObjectException, MetaException {
-        NodeVersionFactory nf = getGround().getNodeVersionFactory();
+        NodeFactory nf = getGround().getNodeFactory();
+        NodeVersionFactory nvf = getGround().getNodeVersionFactory();
         Database dbCopy = db.deepCopy();
         try {
             edu.berkeley.ground.api.versions.Type dbType = edu.berkeley.ground.api.versions.Type.fromString("string");
             Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), Optional.of(dbType)); // fix
-                                                                                                   // Type
-                                                                                                   // field
             Optional<String> reference = Optional.of(dbCopy.getLocationUri());
             Optional<String> versionId = Optional.empty();
             Optional<String> parentId = Optional.empty(); // fix
@@ -112,7 +111,8 @@ public class GroundStore implements RawStore, Configurable {
             Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
             Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
             String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
-            NodeVersion n = nf.create(tagsMap, versionId, reference, parameters, name, parentId);
+            nf.create(name);
+            NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, name, parentId);
             dbList.add(db.getName());
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
@@ -228,8 +228,8 @@ public class GroundStore implements RawStore, Configurable {
                 }
             }
         } catch (GroundException e) {
-            LOG.error("Unable to create table ", e);
-            throw new MetaException("Unable to read from or write ground database" + e.getMessage());
+            LOG.error("Unable to create table{} ", e);
+            throw new MetaException("Unable to read from or write ground database " + e.getMessage());
         }
     }
 
