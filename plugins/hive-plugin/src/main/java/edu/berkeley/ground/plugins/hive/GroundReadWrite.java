@@ -66,6 +66,8 @@ public class GroundReadWrite {
 
     private GroundDBConnection conn;
 
+    private NodeFactory nodeFactory;
+
     private static ThreadLocal<GroundReadWrite> self = new ThreadLocal<GroundReadWrite>() {
         @Override
         protected GroundReadWrite initialValue() {
@@ -145,7 +147,7 @@ public class GroundReadWrite {
         PostgresVersionSuccessorFactory succ = new PostgresVersionSuccessorFactory();
         PostgresVersionHistoryDAGFactory dagFactory = new PostgresVersionHistoryDAGFactory(succ);
         PostgresItemFactory itemFactory = new PostgresItemFactory(dagFactory);
-        NodeFactory nf = new PostgresNodeFactory(itemFactory, (PostgresClient) dbClient);
+        nodeFactory = new PostgresNodeFactory(itemFactory, (PostgresClient) dbClient);
         VersionFactory vf = new PostgresVersionFactory();
         ItemFactory iff = new PostgresItemFactory(null);
         StructureFactory sf = new PostgresStructureFactory((PostgresItemFactory) iff, (PostgresClient) dbClient);
@@ -158,7 +160,7 @@ public class GroundReadWrite {
         edgeVersionFactory = new PostgresEdgeVersionFactory(pef, (PostgresRichVersionFactory) rf,
                 (PostgresClient) dbClient);
         LOG.info("postgresclient " + dbClient.getConnection().toString());
-        nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nf, (PostgresRichVersionFactory) rf,
+        nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nodeFactory, (PostgresRichVersionFactory) rf,
                 (PostgresClient) dbClient);
     }
 
@@ -260,5 +262,9 @@ public class GroundReadWrite {
 
     public void setConn(GroundDBConnection conn) {
         this.conn = conn;
+    }
+
+    public NodeFactory getNodeFactory() {
+        return nodeFactory;
     }
 }
