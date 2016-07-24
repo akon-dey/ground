@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import edu.berkeley.ground.api.models.EdgeFactory;
 import edu.berkeley.ground.api.models.EdgeVersionFactory;
 import edu.berkeley.ground.api.models.GraphFactory;
 import edu.berkeley.ground.api.models.GraphVersionFactory;
@@ -67,6 +68,8 @@ public class GroundReadWrite {
     private GroundDBConnection conn;
 
     private NodeFactory nodeFactory;
+
+    private EdgeFactory edgeFactory;
 
     private static ThreadLocal<GroundReadWrite> self = new ThreadLocal<GroundReadWrite>() {
         @Override
@@ -156,9 +159,9 @@ public class GroundReadWrite {
         RichVersionFactory rf = new PostgresRichVersionFactory((PostgresVersionFactory) vf,
                 (PostgresStructureVersionFactory) svf, null, null);
 
-        PostgresEdgeFactory pef = new PostgresEdgeFactory(itemFactory, (PostgresClient) dbClient);
-        edgeVersionFactory = new PostgresEdgeVersionFactory(pef, (PostgresRichVersionFactory) rf,
-                (PostgresClient) dbClient);
+        edgeFactory = new PostgresEdgeFactory(itemFactory, (PostgresClient) dbClient);
+        edgeVersionFactory = new PostgresEdgeVersionFactory((PostgresEdgeFactory) edgeFactory,
+                (PostgresRichVersionFactory) rf, (PostgresClient) dbClient);
         LOG.info("postgresclient " + dbClient.getConnection().toString());
         nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nodeFactory, (PostgresRichVersionFactory) rf,
                 (PostgresClient) dbClient);
@@ -266,5 +269,9 @@ public class GroundReadWrite {
 
     public NodeFactory getNodeFactory() {
         return nodeFactory;
+    }
+
+    public EdgeFactory getEdgeFactory() {
+        return edgeFactory;
     }
 }

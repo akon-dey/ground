@@ -22,6 +22,8 @@ import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import edu.berkeley.ground.api.models.Edge;
+import edu.berkeley.ground.api.models.EdgeFactory;
 import edu.berkeley.ground.api.models.EdgeVersion;
 import edu.berkeley.ground.api.models.EdgeVersionFactory;
 import edu.berkeley.ground.api.models.Node;
@@ -44,9 +46,8 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite ground = null;
     private Configuration conf;
     private int txnNestLevel;
-    private List<String> dbList = Collections.synchronizedList(new ArrayList<String>());
-    private Map<String, List<String>> dbTable =
-            Collections.synchronizedMap(new HashMap<String, List<String>> ());
+    private Map<String,String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
+    private Map<String, List<String>> dbTable = Collections.synchronizedMap(new HashMap<String, List<String>>());
 
     public GroundStore() {
     }
@@ -99,6 +100,7 @@ public class GroundStore implements RawStore, Configurable {
     public void createDatabase(Database db) throws InvalidObjectException, MetaException {
         NodeFactory nf = getGround().getNodeFactory();
         NodeVersionFactory nvf = getGround().getNodeVersionFactory();
+
         Database dbCopy = db.deepCopy();
         try {
             edu.berkeley.ground.api.versions.Type dbType = edu.berkeley.ground.api.versions.Type.fromString("string");
@@ -111,9 +113,9 @@ public class GroundStore implements RawStore, Configurable {
             Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
             Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
             String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
-            nf.create(name);
-            NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, name, parentId);
-            dbList.add(db.getName());
+            String nodeId = nf.create(name).getId();
+            NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, nodeId, parentId);
+            dbMap.put(name, n.getId());
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
@@ -149,7 +151,9 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public List<String> getAllDatabases() throws MetaException {
-        return dbList;
+        List<String> list = new ArrayList<>();
+        list.addAll(dbMap.keySet());
+        return list;
     }
 
     public boolean createType(Type type) {
@@ -190,12 +194,20 @@ public class GroundStore implements RawStore, Configurable {
             tagsMap.put(tbl.getTableName(), tblTag);
             // create an edge to db which contains this table
             EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
+            EdgeFactory ef = getGround().getEdgeFactory();
             String edgeId = dbName + "." + tableName;
-            EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), edgeId,
-                    dbName, tableName, Optional.empty() /** does it refer to version */
-            );
-            Tag edge = createTag(edgeId, ev);
-            tagsMap.put(edgeId, edge);
+            // Tag tag = createTag(edgeId, ev);
+            // tagsMap.put(edgeId, tag);
+            Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
+            Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
+            // new node for this table
+            String nodeId = getGround().getNodeFactory().create(tableName).getId();
+            NodeVersion nvTbl = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
+                    parameters, nodeId, Optional.empty());
+            Edge edge = ef.create(edgeId);
+            String dbNode = dbMap.get(dbName);
+            EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(),
+                    Optional.empty(), edge.getId(), dbNode, nvTbl.getId(), Optional.empty());
             // add parition keys
             List<FieldSchema> partitionKeys = tbl.getPartitionKeys();
             if (partitionKeys != null) {
@@ -208,23 +220,17 @@ public class GroundStore implements RawStore, Configurable {
                 }
             }
             // edges and tags for partition-keys
-            Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
-            Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
-            // new node for this table
-            NodeVersion nvTbl = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
-                    parameters, tableName, Optional.empty());
             // update database
             // TODO populate partitions
             tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
             tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
             synchronized (dbTable) {
                 if (dbTable.containsKey(tblCopy.getDbName())) {
-                  dbTable.get(tblCopy.getDbName()).add(tblCopy.getTableName());
-                }
-                else {
-                  List<String> valuesList = new ArrayList<String>();
-                  valuesList.add(tblCopy.getTableName());
-                  dbTable.put(tblCopy.getDbName(), valuesList);
+                    dbTable.get(tblCopy.getDbName()).add(tblCopy.getTableName());
+                } else {
+                    List<String> valuesList = new ArrayList<String>();
+                    valuesList.add(tblCopy.getTableName());
+                    dbTable.put(tblCopy.getDbName(), valuesList);
                 }
             }
         } catch (GroundException e) {
