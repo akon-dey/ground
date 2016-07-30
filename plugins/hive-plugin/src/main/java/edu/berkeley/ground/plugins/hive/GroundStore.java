@@ -39,7 +39,7 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite ground = null;
     private Configuration conf;
     private int txnNestLevel;
-    private Map<String,String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
+    private Map<String, String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
     private Map<String, List<String>> dbTable = Collections.synchronizedMap(new HashMap<String, List<String>>());
 
     public GroundStore() {
@@ -189,8 +189,6 @@ public class GroundStore implements RawStore, Configurable {
             EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
             EdgeFactory ef = getGround().getEdgeFactory();
             String edgeId = dbName + "." + tableName;
-            // Tag tag = createTag(edgeId, ev);
-            // tagsMap.put(edgeId, tag);
             Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
             Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
             // new node for this table
@@ -199,10 +197,15 @@ public class GroundStore implements RawStore, Configurable {
                     parameters, nodeId, Optional.empty());
             Edge edge = ef.create(edgeId);
             String dbNode = dbMap.get(dbName);
-            EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(),
-                    Optional.empty(), edge.getId(), dbNode, nvTbl.getId(), Optional.empty());
+            EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                    edge.getId(), dbNode, nvTbl.getId(), Optional.empty());
             // add parition keys
             List<FieldSchema> partitionKeys = tbl.getPartitionKeys();
+            tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
+            tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
+            normalizeColumnNames(tblCopy);
+            tblCopy.getPartitionKeysIterator();
+            //TODO(krishna) check if we need this
             if (partitionKeys != null) {
                 for (FieldSchema f : partitionKeys) {
                     EdgeVersion field = evf.create(Optional.empty(), Optional.empty(), Optional.of(f.getType()),
@@ -215,8 +218,6 @@ public class GroundStore implements RawStore, Configurable {
             // edges and tags for partition-keys
             // update database
             // TODO populate partitions
-            tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
-            tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
             synchronized (dbTable) {
                 if (dbTable.containsKey(tblCopy.getDbName())) {
                     dbTable.get(tblCopy.getDbName()).add(tblCopy.getTableName());
@@ -240,6 +241,28 @@ public class GroundStore implements RawStore, Configurable {
             Optional<edu.berkeley.ground.api.versions.Type> type) {
         return new Tag(version, id, Optional.of(value), type /** fix type */
         );
+    }
+
+    /**
+     * this code is identical to HBaseStore - refactor
+     * @param tbl
+     */
+    private void normalizeColumnNames(Table tbl) {
+        if (tbl.getSd().getCols() != null) {
+            tbl.getSd().setCols(normalizeFieldSchemaList(tbl.getSd().getCols()));
+        }
+        if (tbl.getPartitionKeys() != null) {
+            tbl.setPartitionKeys(normalizeFieldSchemaList(tbl.getPartitionKeys()));
+        }
+    }
+
+    private List<FieldSchema> normalizeFieldSchemaList(List<FieldSchema> fieldschemas) {
+        List<FieldSchema> ret = new ArrayList<>();
+        for (FieldSchema fieldSchema : fieldschemas) {
+            ret.add(new FieldSchema(fieldSchema.getName().toLowerCase(), fieldSchema.getType(),
+                    fieldSchema.getComment()));
+        }
+        return ret;
     }
 
     public boolean dropTable(String dbName, String tableName)

@@ -47,6 +47,7 @@ import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -73,6 +74,7 @@ public class TestGroundMetastore {
     private static final String ROLE1 = "testgroundstorerole1";
     private static final String ROLE2 = "testgroundstorerole2";
     private static final String DBTBL1 = "testgroundstoredb1withtable";
+    private static final String DBPART1 = "testgroundstoredbpart1";
 
     public static class MockPartitionExpressionProxy implements PartitionExpressionProxy {
         @Override
@@ -156,4 +158,48 @@ public class TestGroundMetastore {
         Assert.assertEquals(1, tables.size());
         Assert.assertEquals(TABLE1, tables.get(0));
     }
+
+    @Ignore
+    @Test
+    public void testPartitionOps() throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
+      Database db1 = new Database(DBPART1, "description", "locationurl", null);
+      groundStore.createDatabase(db1);
+      StorageDescriptor sd = new StorageDescriptor(null, "location", null, null, false, 0, new SerDeInfo("SerDeName", "serializationLib", null), null, null, null);
+      HashMap<String,String> tableParams = new HashMap<String,String>();
+      tableParams.put("EXTERNAL", "false");
+      FieldSchema partitionKey1 = new FieldSchema("Country", serdeConstants.STRING_TYPE_NAME, "");
+      FieldSchema partitionKey2 = new FieldSchema("State", serdeConstants.STRING_TYPE_NAME, "");
+      Table tbl1 = new Table(TABLE1, DB1, "owner", 1, 2, 3, sd, Arrays.asList(partitionKey1, partitionKey2), tableParams, "viewOriginalText", "viewExpandedText", "MANAGED_TABLE");
+      groundStore.createTable(tbl1);
+      HashMap<String, String> partitionParams = new HashMap<String, String>();
+      partitionParams.put("PARTITION_LEVEL_PRIVILEGE", "true");
+      List<String> value1 = Arrays.asList("US", "CA");
+      Partition part1 = new Partition(value1, DB1, TABLE1, 111, 111, sd, partitionParams);
+      groundStore.addPartition(part1);
+      List<String> value2 = Arrays.asList("US", "MA");
+      Partition part2 = new Partition(value2, DB1, TABLE1, 222, 222, sd, partitionParams);
+      groundStore.addPartition(part2);
+
+      Deadline.startTimer("getPartition");
+      List<Partition> partitions = groundStore.getPartitions(DB1, TABLE1, 10);
+      Assert.assertEquals(2, partitions.size());
+      Assert.assertEquals(111, partitions.get(0).getCreateTime());
+      Assert.assertEquals(222, partitions.get(1).getCreateTime());
+
+      int numPartitions  = groundStore.getNumPartitionsByFilter(DB1, TABLE1, "");
+      Assert.assertEquals(partitions.size(), numPartitions);
+
+      numPartitions  = groundStore.getNumPartitionsByFilter(DB1, TABLE1, "country = \"US\"");
+      Assert.assertEquals(2, numPartitions);
+
+      groundStore.dropPartition(DB1, TABLE1, value1);
+      partitions = groundStore.getPartitions(DB1, TABLE1, 10);
+      Assert.assertEquals(1, partitions.size());
+      Assert.assertEquals(222, partitions.get(0).getCreateTime());
+
+      groundStore.dropPartition(DB1, TABLE1, value2);
+      groundStore.dropTable(DB1, TABLE1);
+      groundStore.dropDatabase(DB1);
+    }
+
 }
