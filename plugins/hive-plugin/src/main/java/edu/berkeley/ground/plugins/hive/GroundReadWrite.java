@@ -20,7 +20,6 @@ import edu.berkeley.ground.db.DBClient;
 import edu.berkeley.ground.db.DBClient.GroundDBConnection;
 import edu.berkeley.ground.db.PostgresClient;
 import edu.berkeley.ground.exceptions.GroundDBException;
-import edu.berkeley.ground.plugins.hive.util.TestUtils;
 import edu.berkeley.ground.api.models.NodeVersionFactory;
 import edu.berkeley.ground.api.models.RichVersionFactory;
 import edu.berkeley.ground.api.models.StructureFactory;
@@ -157,7 +156,7 @@ public class GroundReadWrite {
         StructureVersionFactory svf = new PostgresStructureVersionFactory((PostgresStructureFactory) sf,
                 (PostgresVersionFactory) vf, (PostgresClient) dbClient);
         RichVersionFactory rf = new PostgresRichVersionFactory((PostgresVersionFactory) vf,
-                (PostgresStructureVersionFactory) svf, null, null);
+                (PostgresStructureVersionFactory) svf, null);
 
         edgeFactory = new PostgresEdgeFactory(itemFactory, (PostgresClient) dbClient);
         edgeVersionFactory = new PostgresEdgeVersionFactory((PostgresEdgeFactory) edgeFactory,
