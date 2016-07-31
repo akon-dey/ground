@@ -145,7 +145,7 @@ public class GroundReadWrite {
 
     private void createTestInstances() throws GroundDBException {
         // TODO move this
-        dbClient = new PostgresClient("127.0.0.1", 5432, "default", "test", "test");
+        dbClient = new PostgresClient("127.0.0.1", 5432, "test", "test", "test");
         PostgresVersionSuccessorFactory succ = new PostgresVersionSuccessorFactory();
         PostgresVersionHistoryDAGFactory dagFactory = new PostgresVersionHistoryDAGFactory(succ);
         PostgresItemFactory itemFactory = new PostgresItemFactory(dagFactory);
