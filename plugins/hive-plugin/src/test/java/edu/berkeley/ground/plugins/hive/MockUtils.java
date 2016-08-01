@@ -14,7 +14,7 @@ public class MockUtils {
     public class MockGroundStore extends GroundStore {
         Map<String, Database> databaseMap = new HashMap<String, Database>();
         Map<String, Table> tableMap = new HashMap<String, Table>();
-        
+
         @Override
         public void createDatabase(Database db) throws InvalidObjectException, MetaException {
             databaseMap.put(db.getName(), db);
@@ -35,9 +35,9 @@ public class MockUtils {
             return tableMap.get(dbName + "->" + tableName);
         }
     }
-    
+
     private static MockUtils mockUtils = new MockUtils();
-    
+
     public static GroundStore init(HiveConf conf) {
         return mockUtils.new MockGroundStore();
     }

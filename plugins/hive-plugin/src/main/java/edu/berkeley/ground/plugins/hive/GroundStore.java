@@ -42,8 +42,9 @@ public class GroundStore implements RawStore, Configurable {
     private int txnNestLevel;
     private Map<String, String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
     private Map<String, List<String>> dbTable = Collections.synchronizedMap(new HashMap<String, List<String>>());
-    private Map<ObjectPair<String, String>, List<String>> partCache =
-            Collections.synchronizedMap(new HashMap<ObjectPair<String,String>, List<String>>());
+    private Map<ObjectPair<String, String>, List<String>> partCache = Collections
+            .synchronizedMap(new HashMap<ObjectPair<String, String>, List<String>>());
+
     public GroundStore() {
     }
 
@@ -231,6 +232,7 @@ public class GroundStore implements RawStore, Configurable {
 
     /**
      * this code is identical to HBaseStore - refactor
+     * 
      * @param tbl
      */
     private void normalizeColumnNames(Table tbl) {
@@ -298,11 +300,11 @@ public class GroundStore implements RawStore, Configurable {
                 partList = new ArrayList<>();
             }
             partList.add(n.getId());
-            partCache.put(objectPair, partList);//TODO use hive PartitionCache
+            partCache.put(objectPair, partList);// TODO use hive PartitionCache
             return true;
-          } catch (GroundException e) {
+        } catch (GroundException e) {
             throw new MetaException("Unable to add partition " + e.getMessage());
-          }
+        }
     }
 
     public boolean addPartitions(String dbName, String tblName, List<Partition> parts)
@@ -339,10 +341,10 @@ public class GroundStore implements RawStore, Configurable {
     @Override
     public List<Partition> getPartitions(String dbName, String tableName, int max)
             throws MetaException, NoSuchObjectException {
-        ObjectPair<String,String> pair = new ObjectPair<>(dbName, tableName);
+        ObjectPair<String, String> pair = new ObjectPair<>(dbName, tableName);
         List<String> idList = partCache.get(pair);
         int size = max <= idList.size() ? max : partCache.size();
-        List<String> subPartlist = idList.subList(0, size -1);
+        List<String> subPartlist = idList.subList(0, size - 1);
         List<Partition> partList = new ArrayList<Partition>();
         for (String id : subPartlist) {
             partList.add(getPartition(id));
@@ -350,8 +352,7 @@ public class GroundStore implements RawStore, Configurable {
         return partList;
     }
 
-    private Partition getPartition(String id)
-            throws MetaException, NoSuchObjectException {
+    private Partition getPartition(String id) throws MetaException, NoSuchObjectException {
         NodeVersion n;
         try {
             n = getGround().getNodeVersionFactory().retrieveFromDatabase(id);

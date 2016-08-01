@@ -164,8 +164,8 @@ public class GroundReadWrite {
         edgeVersionFactory = new PostgresEdgeVersionFactory((PostgresEdgeFactory) edgeFactory,
                 (PostgresRichVersionFactory) rf, (PostgresClient) dbClient);
         LOG.info("postgresclient " + dbClient.getConnection().toString());
-        nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nodeFactory, (PostgresRichVersionFactory) rf,
-                (PostgresClient) dbClient);
+        nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nodeFactory,
+                (PostgresRichVersionFactory) rf, (PostgresClient) dbClient);
     }
 
     private Object createInstance(String clientClass)
@@ -277,13 +277,15 @@ public class GroundReadWrite {
     }
 
     /**
-     * Add a partition.  This should only be called for new partitions.  For altering existing
-     * partitions this should not be called as it will blindly increment the ref counter for the
-     * storage descriptor.
-     * @param partition partition object to add
+     * Add a partition. This should only be called for new partitions. For
+     * altering existing partitions this should not be called as it will blindly
+     * increment the ref counter for the storage descriptor.
+     * 
+     * @param partition
+     *            partition object to add
      * @throws IOException
      */
     void putPartition(Partition partition) throws IOException {
-        //TODO (krishna) use hbase model and PartitionCache to store
+        // TODO (krishna) use hbase model and PartitionCache to store
     }
 }
