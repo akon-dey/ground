@@ -75,6 +75,7 @@ public class TestGroundMetastore {
     private static final String ROLE2 = "testgroundstorerole2";
     private static final String DBTBL1 = "testgroundstoredb1withtable";
     private static final String DBPART1 = "testgroundstoredbpart1";
+    private static final String PARTTABLE1 = "partitiontesttable1";
 
     public static class MockPartitionExpressionProxy implements PartitionExpressionProxy {
         @Override
@@ -107,6 +108,7 @@ public class TestGroundMetastore {
     @Before
     public void setUp() throws Exception {
         HiveConf conf = new HiveConf();
+        Deadline.registerIfNot(100000);
         conf.setVar(HiveConf.ConfVars.METASTORE_EXPRESSION_PROXY_CLASS, MockPartitionExpressionProxy.class.getName());
         HiveConf.setVar(conf, HiveConf.ConfVars.METASTORE_CONNECTION_DRIVER, "test_connection");
         conf.set(GRAPHFACTORY_CLASS, CassandraGraphVersionFactory.class.getName());
@@ -159,29 +161,29 @@ public class TestGroundMetastore {
         Assert.assertEquals(TABLE1, tables.get(0));
     }
 
-    @Ignore
+    @Ignore //work in progress
     @Test
     public void testPartitionOps() throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
-      Database db1 = new Database(DBPART1, "description", "locationurl", null);
+      Database db1 = new Database(DBPART1, "description", "locationurl", new HashMap<String, String>());
       groundStore.createDatabase(db1);
       StorageDescriptor sd = new StorageDescriptor(null, "location", null, null, false, 0, new SerDeInfo("SerDeName", "serializationLib", null), null, null, null);
       HashMap<String,String> tableParams = new HashMap<String,String>();
       tableParams.put("EXTERNAL", "false");
       FieldSchema partitionKey1 = new FieldSchema("Country", serdeConstants.STRING_TYPE_NAME, "");
       FieldSchema partitionKey2 = new FieldSchema("State", serdeConstants.STRING_TYPE_NAME, "");
-      Table tbl1 = new Table(TABLE1, DB1, "owner", 1, 2, 3, sd, Arrays.asList(partitionKey1, partitionKey2), tableParams, "viewOriginalText", "viewExpandedText", "MANAGED_TABLE");
+      Table tbl1 = new Table(PARTTABLE1, DBPART1, "owner", 1, 2, 3, sd, Arrays.asList(partitionKey1, partitionKey2), tableParams, "viewOriginalText", "viewExpandedText", "MANAGED_TABLE");
       groundStore.createTable(tbl1);
       HashMap<String, String> partitionParams = new HashMap<String, String>();
       partitionParams.put("PARTITION_LEVEL_PRIVILEGE", "true");
       List<String> value1 = Arrays.asList("US", "CA");
-      Partition part1 = new Partition(value1, DB1, TABLE1, 111, 111, sd, partitionParams);
+      Partition part1 = new Partition(value1, DBPART1, PARTTABLE1, 111, 111, sd, partitionParams);
       groundStore.addPartition(part1);
       List<String> value2 = Arrays.asList("US", "MA");
-      Partition part2 = new Partition(value2, DB1, TABLE1, 222, 222, sd, partitionParams);
+      Partition part2 = new Partition(value2, DBPART1, PARTTABLE1, 222, 222, sd, partitionParams);
       groundStore.addPartition(part2);
 
       Deadline.startTimer("getPartition");
-      List<Partition> partitions = groundStore.getPartitions(DB1, TABLE1, 10);
+      List<Partition> partitions = groundStore.getPartitions(DBPART1, TABLE1, 10);
       Assert.assertEquals(2, partitions.size());
       Assert.assertEquals(111, partitions.get(0).getCreateTime());
       Assert.assertEquals(222, partitions.get(1).getCreateTime());

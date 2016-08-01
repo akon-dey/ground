@@ -6,6 +6,8 @@ import java.lang.reflect.InvocationTargetException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.api.Partition;
+import org.apache.hadoop.hive.metastore.hbase.HBaseUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -272,5 +274,16 @@ public class GroundReadWrite {
 
     public EdgeFactory getEdgeFactory() {
         return edgeFactory;
+    }
+
+    /**
+     * Add a partition.  This should only be called for new partitions.  For altering existing
+     * partitions this should not be called as it will blindly increment the ref counter for the
+     * storage descriptor.
+     * @param partition partition object to add
+     * @throws IOException
+     */
+    void putPartition(Partition partition) throws IOException {
+        //TODO (krishna) use hbase model and PartitionCache to store
     }
 }

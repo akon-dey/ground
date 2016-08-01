@@ -11,7 +11,8 @@ import java.util.Optional;
 
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hive.metastore.api.*;
+import org.apache.hadoop.hive.metastore.api.*; //TODO(krishna) fix
+import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.metastore.FileMetadataHandler;
 import org.apache.hadoop.hive.metastore.RawStore;
 import org.apache.hadoop.hive.metastore.partition.spec.PartitionSpecProxy;
@@ -41,7 +42,8 @@ public class GroundStore implements RawStore, Configurable {
     private int txnNestLevel;
     private Map<String, String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
     private Map<String, List<String>> dbTable = Collections.synchronizedMap(new HashMap<String, List<String>>());
-
+    private Map<ObjectPair<String, String>, List<String>> partCache =
+            Collections.synchronizedMap(new HashMap<ObjectPair<String,String>, List<String>>());
     public GroundStore() {
     }
 
@@ -177,12 +179,15 @@ public class GroundStore implements RawStore, Configurable {
     public void createTable(Table tbl) throws InvalidObjectException, MetaException {
         openTransaction();
         // HiveMetaStore above us checks if the table already exists, so we can
-        // blindly store it here.
+        // blindly store it here
         try {
             Table tblCopy = tbl.deepCopy();
             String dbName = tblCopy.getDbName();
             String tableName = tblCopy.getTableName();
             Map<String, Tag> tagsMap = new HashMap<>();
+            tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
+            tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
+            normalizeColumnNames(tblCopy);
             Tag tblTag = createTag(tableName, tblCopy);
             tagsMap.put(tbl.getTableName(), tblTag);
             // create an edge to db which contains this table
@@ -199,25 +204,6 @@ public class GroundStore implements RawStore, Configurable {
             String dbNode = dbMap.get(dbName);
             EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
                     edge.getId(), dbNode, nvTbl.getId(), Optional.empty());
-            // add parition keys
-            List<FieldSchema> partitionKeys = tbl.getPartitionKeys();
-            tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
-            tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
-            normalizeColumnNames(tblCopy);
-            tblCopy.getPartitionKeysIterator();
-            //TODO(krishna) check if we need this
-            if (partitionKeys != null) {
-                for (FieldSchema f : partitionKeys) {
-                    EdgeVersion field = evf.create(Optional.empty(), Optional.empty(), Optional.of(f.getType()),
-                            Optional.empty(), f.getName(), tableName, f.getName(),
-                            Optional.empty() /** does it refer to version */
-                    );
-                    tagsMap.put(f.getName(), createTag(f.getName(), field));
-                }
-            }
-            // edges and tags for partition-keys
-            // update database
-            // TODO populate partitions
             synchronized (dbTable) {
                 if (dbTable.containsKey(tblCopy.getDbName())) {
                     dbTable.get(tblCopy.getDbName()).add(tblCopy.getTableName());
@@ -267,7 +253,7 @@ public class GroundStore implements RawStore, Configurable {
 
     public boolean dropTable(String dbName, String tableName)
             throws MetaException, NoSuchObjectException, InvalidObjectException, InvalidInputException {
-        // TODO Auto-generated method stub
+        // TODO (krishna) I stashed this change will update after adding a test
         return false;
     }
 
@@ -283,9 +269,40 @@ public class GroundStore implements RawStore, Configurable {
         return (Table) tblTag.get(tableName).getValue().get();
     }
 
+    @Override
     public boolean addPartition(Partition part) throws InvalidObjectException, MetaException {
-        // TODO Auto-generated method stub
-        return false;
+        NodeVersionFactory nvf = getGround().getNodeVersionFactory();
+        NodeFactory nf = getGround().getNodeFactory();
+        try {
+            Partition partCopy = part.deepCopy();
+            String dbName = part.getDbName();
+            String tableName = part.getTableName();
+            ObjectPair<String, String> objectPair = new ObjectPair<>(dbName, tableName);
+            partCopy.setDbName(HiveStringUtils.normalizeIdentifier(dbName));
+            String partId = objectPair.toString() + part.getCreateTime();
+            partCopy.setTableName(HiveStringUtils.normalizeIdentifier(partId));
+            edu.berkeley.ground.api.versions.Type partType = edu.berkeley.ground.api.versions.Type.fromString("string");
+            Tag partTag = new Tag(null, partId, Optional.of(partCopy), Optional.of(partType)); // fix
+            Optional<String> reference = Optional.of(partCopy.getSd().getLocation());
+            Optional<String> versionId = Optional.empty();
+            Optional<String> parentId = Optional.empty(); // fix
+            HashMap<String, Tag> tags = new HashMap<>();
+            tags.put(partId, partTag);
+            Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
+            Optional<Map<String, String>> parameters = Optional.of(partCopy.getParameters());
+            String name = HiveStringUtils.normalizeIdentifier(partId);
+            String nodeId = nf.create(name).getId();
+            NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, nodeId, parentId);
+            List<String> partList = partCache.get(objectPair);
+            if (partList == null) {
+                partList = new ArrayList<>();
+            }
+            partList.add(n.getId());
+            partCache.put(objectPair, partList);//TODO use hive PartitionCache
+            return true;
+          } catch (GroundException e) {
+            throw new MetaException("Unable to add partition " + e.getMessage());
+          }
     }
 
     public boolean addPartitions(String dbName, String tblName, List<Partition> parts)
@@ -300,6 +317,7 @@ public class GroundStore implements RawStore, Configurable {
         return false;
     }
 
+    @Override
     public Partition getPartition(String dbName, String tableName, List<String> part_vals)
             throws MetaException, NoSuchObjectException {
         // TODO Auto-generated method stub
@@ -318,10 +336,31 @@ public class GroundStore implements RawStore, Configurable {
         return false;
     }
 
+    @Override
     public List<Partition> getPartitions(String dbName, String tableName, int max)
             throws MetaException, NoSuchObjectException {
-        // TODO Auto-generated method stub
-        return null;
+        ObjectPair<String,String> pair = new ObjectPair<>(dbName, tableName);
+        List<String> idList = partCache.get(pair);
+        int size = max <= idList.size() ? max : partCache.size();
+        List<String> subPartlist = idList.subList(0, size -1);
+        List<Partition> partList = new ArrayList<Partition>();
+        for (String id : subPartlist) {
+            partList.add(getPartition(id));
+        }
+        return partList;
+    }
+
+    private Partition getPartition(String id)
+            throws MetaException, NoSuchObjectException {
+        NodeVersion n;
+        try {
+            n = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
+        } catch (GroundException e) {
+            LOG.error("get failed for id:{} ", id + e);
+            throw new MetaException(e.getMessage());
+        }
+        Map<String, Tag> partTag = n.getTags().get();
+        return (Partition) partTag.get(n.getId()).getValue().get();
     }
 
     public void alterTable(String dbname, String name, Table newTable) throws InvalidObjectException, MetaException {
