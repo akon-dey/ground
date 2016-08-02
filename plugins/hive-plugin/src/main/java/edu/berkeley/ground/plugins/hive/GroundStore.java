@@ -33,6 +33,8 @@ import edu.berkeley.ground.exceptions.GroundException;
 
 public class GroundStore implements RawStore, Configurable {
 
+    private static final String DEFAULT_VERSION = "1.0.0";
+
     static final private Logger LOG = LoggerFactory.getLogger(GroundStore.class.getName());
 
     // Do not access this directly, call getHBase to make sure it is
@@ -41,10 +43,10 @@ public class GroundStore implements RawStore, Configurable {
     private Configuration conf;
     private int txnNestLevel;
     private Map<String, String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
-    private Map<String, List<String>> dbTable = Collections.synchronizedMap(new HashMap<String, List<String>>());
+    private Map<String, Map<String, String>> dbTable =
+            Collections.synchronizedMap(new HashMap<String, Map<String, String>>());
     private Map<ObjectPair<String, String>, List<String>> partCache = Collections
             .synchronizedMap(new HashMap<ObjectPair<String, String>, List<String>>());
-
     public GroundStore() {
     }
 
@@ -102,7 +104,7 @@ public class GroundStore implements RawStore, Configurable {
             edu.berkeley.ground.api.versions.Type dbType = edu.berkeley.ground.api.versions.Type.fromString("string");
             Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), Optional.of(dbType)); // fix
             Optional<String> reference = Optional.of(dbCopy.getLocationUri());
-            Optional<String> versionId = Optional.empty();
+            Optional<String> structureVersionId = Optional.empty();
             Optional<String> parentId = Optional.empty(); // fix
             HashMap<String, Tag> tags = new HashMap<>();
             tags.put(dbCopy.getName(), dbTag);
@@ -110,7 +112,7 @@ public class GroundStore implements RawStore, Configurable {
             Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
             String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
             String nodeId = nf.create(name).getId();
-            NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, nodeId, parentId);
+            NodeVersion n = nvf.create(tagsMap, structureVersionId, reference, parameters, nodeId, parentId);
             dbMap.put(name, n.getId());
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
@@ -121,7 +123,8 @@ public class GroundStore implements RawStore, Configurable {
     public Database getDatabase(String name) throws NoSuchObjectException {
         NodeVersion n;
         try {
-            n = getGround().getNodeVersionFactory().retrieveFromDatabase(name);
+            String id = dbMap.get(name);
+            n = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
         } catch (GroundException e) {
             LOG.error("get failed for database ", name, e);
             throw new NoSuchObjectException(e.getMessage());
@@ -207,11 +210,11 @@ public class GroundStore implements RawStore, Configurable {
                     edge.getId(), dbNode, nvTbl.getId(), Optional.empty());
             synchronized (dbTable) {
                 if (dbTable.containsKey(tblCopy.getDbName())) {
-                    dbTable.get(tblCopy.getDbName()).add(tblCopy.getTableName());
+                    dbTable.get(tblCopy.getDbName()).put(tblCopy.getTableName(), nvTbl.getId());
                 } else {
-                    List<String> valuesList = new ArrayList<String>();
-                    valuesList.add(tblCopy.getTableName());
-                    dbTable.put(tblCopy.getDbName(), valuesList);
+                    Map<String, String> tableMap = new HashMap<String, String>();
+                    tableMap.put(tblCopy.getTableName(), nvTbl.getId());
+                    dbTable.put(tblCopy.getDbName(), tableMap);
                 }
             }
         } catch (GroundException e) {
@@ -221,7 +224,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     private Tag createTag(String id, Object value) {
-        return createTag("1.0.0", id, value, Optional.empty());
+        return createTag(DEFAULT_VERSION, id, value, Optional.empty());
     }
 
     private Tag createTag(String version, String id, Object value,
@@ -262,7 +265,9 @@ public class GroundStore implements RawStore, Configurable {
     public Table getTable(String dbName, String tableName) throws MetaException {
         NodeVersion n;
         try {
-            n = getGround().getNodeVersionFactory().retrieveFromDatabase(tableName);
+            Map<String, String> tableMap = dbTable.get(dbName);
+            String nodeId = tableMap.get(tableName);
+            n = getGround().getNodeVersionFactory().retrieveFromDatabase(nodeId);
         } catch (GroundException e) {
             LOG.error("get failed for database ", tableName, e);
             throw new MetaException(e.getMessage());
@@ -387,7 +392,9 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public List<String> getAllTables(String dbName) throws MetaException {
-        return dbTable.get(dbName);
+        ArrayList<String> list = new ArrayList<String>();
+        list.addAll(dbTable.get(dbName).keySet());
+        return list;
     }
 
     public List<String> listTableNamesByFilter(String dbName, String filter, short max_tables)
