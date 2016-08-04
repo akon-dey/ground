@@ -95,29 +95,39 @@ public class GroundStore implements RawStore, Configurable {
         }
     }
 
+    /**
+     * create a database using ground APIs. Uses node and node version.
+     */
     public void createDatabase(Database db) throws InvalidObjectException, MetaException {
         NodeFactory nf = getGround().getNodeFactory();
         NodeVersionFactory nvf = getGround().getNodeVersionFactory();
 
         Database dbCopy = db.deepCopy();
         try {
-            edu.berkeley.ground.api.versions.Type dbType = edu.berkeley.ground.api.versions.Type.fromString("string");
-            Tag dbTag = new Tag(null, dbCopy.getName(), Optional.of(dbCopy), Optional.of(dbType)); // fix
-            Optional<String> reference = Optional.of(dbCopy.getLocationUri());
-            Optional<String> structureVersionId = Optional.empty();
-            Optional<String> parentId = Optional.empty(); // fix
-            HashMap<String, Tag> tags = new HashMap<>();
-            tags.put(dbCopy.getName(), dbTag);
-            Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
-            Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
-            String name = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
-            String nodeId = nf.create(name).getId();
-            NodeVersion n = nvf.create(tagsMap, structureVersionId, reference, parameters, nodeId, parentId);
-            dbMap.put(name, n.getId());
+            edu.berkeley.ground.api.versions.Type dbType =
+                    edu.berkeley.ground.api.versions.Type.fromString("string");
+            String dbName = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
+            NodeVersion n = createDatabaseNodeVersion(nf, nvf, dbCopy, dbType, dbName);
+            dbMap.put(dbName, n.getId());
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
         }
+    }
+
+    private NodeVersion createDatabaseNodeVersion(NodeFactory nf, NodeVersionFactory nvf, Database dbCopy,
+            edu.berkeley.ground.api.versions.Type dbType, String dbName) throws GroundException {
+        Tag dbTag = new Tag(DEFAULT_VERSION, dbName, Optional.of(dbCopy), Optional.of(dbType)); // fix
+        Optional<String> reference = Optional.of(dbCopy.getLocationUri());
+        Optional<String> structureVersionId = Optional.empty();
+        Optional<String> parentId = Optional.empty(); // fix
+        HashMap<String, Tag> tags = new HashMap<>();
+        tags.put(dbName, dbTag);
+        //create a new tag map and populate all DB related metadata
+        Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
+        Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
+        String nodeId = nf.create(dbName).getId();
+        return nvf.create(tagsMap, structureVersionId, reference, parameters, nodeId, parentId);
     }
 
     public Database getDatabase(String name) throws NoSuchObjectException {
@@ -189,38 +199,50 @@ public class GroundStore implements RawStore, Configurable {
             String dbName = tblCopy.getDbName();
             String tableName = tblCopy.getTableName();
             Map<String, Tag> tagsMap = new HashMap<>();
-            tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(tblCopy.getDbName()));
+            tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(dbName));
             tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
             normalizeColumnNames(tblCopy);
-            Tag tblTag = createTag(tableName, tblCopy);
-            tagsMap.put(tbl.getTableName(), tblTag);
-            // create an edge to db which contains this table
-            EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
-            EdgeFactory ef = getGround().getEdgeFactory();
-            String edgeId = dbName + "." + tableName;
-            Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
-            Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
-            // new node for this table
-            String nodeId = getGround().getNodeFactory().create(tableName).getId();
-            NodeVersion nvTbl = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
-                    parameters, nodeId, Optional.empty());
-            Edge edge = ef.create(edgeId);
-            String dbNode = dbMap.get(dbName);
-            EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-                    edge.getId(), dbNode, nvTbl.getId(), Optional.empty());
-            synchronized (dbTable) {
-                if (dbTable.containsKey(tblCopy.getDbName())) {
-                    dbTable.get(tblCopy.getDbName()).put(tblCopy.getTableName(), nvTbl.getId());
-                } else {
-                    Map<String, String> tableMap = new HashMap<String, String>();
-                    tableMap.put(tblCopy.getTableName(), nvTbl.getId());
-                    dbTable.put(tblCopy.getDbName(), tableMap);
-                }
-            }
+            NodeVersion tableNodeVersion = createTableNodeVersion(tbl, tblCopy, dbName, tableName, tagsMap);
+            updateTableMetadata(tblCopy, dbName, tableName, tableNodeVersion);
         } catch (GroundException e) {
             LOG.error("Unable to create table{} ", e);
             throw new MetaException("Unable to read from or write ground database " + e.getMessage());
         }
+    }
+
+    private void updateTableMetadata(Table tblCopy, String dbName, String tableName, NodeVersion tableNodeVersion) {
+        synchronized (dbTable) {
+            if (dbTable.containsKey(dbName)) {
+                dbTable.get(dbName).put(tblCopy.getTableName(),
+                        tableNodeVersion.getId());
+            } else {
+                Map<String, String> tableMap = new HashMap<String, String>();
+                tableMap.put(tableName, tableNodeVersion.getId());
+                dbTable.put(dbName, tableMap);
+            }
+        }
+    }
+
+    /** Create node version for the given table. */
+    private NodeVersion createTableNodeVersion(Table tbl, Table tblCopy, String dbName, String tableName,
+            Map<String, Tag> tagsMap) throws GroundException {
+        Tag tblTag = createTag(tableName, tblCopy);
+        tagsMap.put(tbl.getTableName(), tblTag);
+        // create an edge to db which contains this table
+        EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
+        EdgeFactory ef = getGround().getEdgeFactory();
+        String edgeId = dbName + "." + tableName;
+        Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
+        Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
+        // new node for this table
+        String nodeId = getGround().getNodeFactory().create(tableName).getId();
+        NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
+                parameters, nodeId, Optional.empty());
+        Edge edge = ef.create(edgeId);
+        String dbNodeId = dbMap.get(dbName);
+        EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
+        return tableNodeVersion;
     }
 
     private Tag createTag(String id, Object value) {
