@@ -202,7 +202,7 @@ public class GroundStore implements RawStore, Configurable {
             tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(dbName));
             tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
             normalizeColumnNames(tblCopy);
-            NodeVersion tableNodeVersion = createTableNodeVersion(tbl, tblCopy, dbName, tableName, tagsMap);
+            NodeVersion tableNodeVersion = createTableNodeVersion(tblCopy, dbName, tableName, tagsMap);
             updateTableMetadata(tblCopy, dbName, tableName, tableNodeVersion);
         } catch (GroundException e) {
             LOG.error("Unable to create table{} ", e);
@@ -224,16 +224,16 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     /** Create node version for the given table. */
-    private NodeVersion createTableNodeVersion(Table tbl, Table tblCopy, String dbName, String tableName,
+    private NodeVersion createTableNodeVersion(Table tblCopy, String dbName, String tableName,
             Map<String, Tag> tagsMap) throws GroundException {
         Tag tblTag = createTag(tableName, tblCopy);
-        tagsMap.put(tbl.getTableName(), tblTag);
+        tagsMap.put(tableName, tblTag);
         // create an edge to db which contains this table
         EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
         EdgeFactory ef = getGround().getEdgeFactory();
         String edgeId = dbName + "." + tableName;
         Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
-        Optional<Map<String, String>> parameters = Optional.of(tbl.getParameters());
+        Optional<Map<String, String>> parameters = Optional.of(tblCopy.getParameters());
         // new node for this table
         String nodeId = getGround().getNodeFactory().create(tableName).getId();
         NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
