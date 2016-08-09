@@ -33,6 +33,7 @@ import edu.berkeley.ground.api.models.postgres.PostgresNodeVersionFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresRichVersionFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresStructureFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresStructureVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresTagFactory;
 import edu.berkeley.ground.api.versions.ItemFactory;
 import edu.berkeley.ground.api.versions.VersionFactory;
 import edu.berkeley.ground.api.versions.postgres.PostgresItemFactory;
@@ -150,14 +151,15 @@ public class GroundReadWrite {
         PostgresVersionSuccessorFactory succ = new PostgresVersionSuccessorFactory();
         PostgresVersionHistoryDAGFactory dagFactory = new PostgresVersionHistoryDAGFactory(succ);
         PostgresItemFactory itemFactory = new PostgresItemFactory(dagFactory);
+        PostgresTagFactory tagFactory = new PostgresTagFactory();
         nodeFactory = new PostgresNodeFactory(itemFactory, (PostgresClient) dbClient);
         VersionFactory vf = new PostgresVersionFactory();
-        ItemFactory iff = new PostgresItemFactory(null);
+        ItemFactory iff = new PostgresItemFactory(dagFactory);
         StructureFactory sf = new PostgresStructureFactory((PostgresItemFactory) iff, (PostgresClient) dbClient);
         StructureVersionFactory svf = new PostgresStructureVersionFactory((PostgresStructureFactory) sf,
                 (PostgresVersionFactory) vf, (PostgresClient) dbClient);
         RichVersionFactory rf = new PostgresRichVersionFactory((PostgresVersionFactory) vf,
-                (PostgresStructureVersionFactory) svf, null);
+                (PostgresStructureVersionFactory) svf, tagFactory);
 
         edgeFactory = new PostgresEdgeFactory(itemFactory, (PostgresClient) dbClient);
         edgeVersionFactory = new PostgresEdgeVersionFactory((PostgresEdgeFactory) edgeFactory,

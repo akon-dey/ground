@@ -3,6 +3,7 @@ package edu.berkeley.ground.plugins.hive;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -309,9 +310,10 @@ public class GroundStore implements RawStore, Configurable {
             ObjectPair<String, String> objectPair = new ObjectPair<>(dbName, tableName);
             partCopy.setDbName(HiveStringUtils.normalizeIdentifier(dbName));
             String partId = objectPair.toString() + part.getCreateTime();
-            partCopy.setTableName(HiveStringUtils.normalizeIdentifier(partId));
-            edu.berkeley.ground.api.versions.Type partType = edu.berkeley.ground.api.versions.Type.fromString("string");
-            Tag partTag = new Tag(null, partId, Optional.of(partCopy), Optional.of(partType)); // fix
+            partCopy.setTableName(HiveStringUtils.normalizeIdentifier(tableName));
+            // edu.berkeley.ground.api.versions.Type partType = edu.berkeley.ground.api.versions.Type.fromString("string");
+            Tag partTag = createTag(partId, partCopy);
+            // new Tag(DEFAULT_VERSION, partId, Optional.of(partCopy), Optional.of(partType)); // fix
             Optional<String> reference = Optional.of(partCopy.getSd().getLocation());
             Optional<String> versionId = Optional.empty();
             Optional<String> parentId = Optional.empty(); // fix
@@ -326,7 +328,9 @@ public class GroundStore implements RawStore, Configurable {
             if (partList == null) {
                 partList = new ArrayList<>();
             }
-            partList.add(n.getId());
+            String partitionNodeId = n.getId();
+            partList.add(partitionNodeId);
+            LOG.info("adding partition: {} {}", objectPair, partitionNodeId);
             partCache.put(objectPair, partList);// TODO use hive PartitionCache
             return true;
         } catch (GroundException e) {
@@ -370,8 +374,9 @@ public class GroundStore implements RawStore, Configurable {
             throws MetaException, NoSuchObjectException {
         ObjectPair<String, String> pair = new ObjectPair<>(dbName, tableName);
         List<String> idList = partCache.get(pair);
-        int size = max <= idList.size() ? max : partCache.size();
-        List<String> subPartlist = idList.subList(0, size - 1);
+        int size = max <= idList.size() ? max : idList.size();
+        LOG.info("size of partition array: {} {}", size, idList.size());
+        List<String> subPartlist = idList.subList(0, size);
         List<Partition> partList = new ArrayList<Partition>();
         for (String id : subPartlist) {
             partList.add(getPartition(id));
@@ -384,11 +389,16 @@ public class GroundStore implements RawStore, Configurable {
         try {
             n = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
         } catch (GroundException e) {
-            LOG.error("get failed for id:{} ", id + e);
+            LOG.error("get failed for id:{}", e);
             throw new MetaException(e.getMessage());
         }
-        Map<String, Tag> partTag = n.getTags().get();
-        return (Partition) partTag.get(n.getId()).getValue().get();
+        Collection<Tag> partTags = n.getTags().get().values();
+        List<Partition> partList = new ArrayList<Partition>();
+        for (Tag t : partTags) {
+            partList.add((Partition) t.getValue().get());
+        }
+        return partList.get(0);
+        //return (Partition) partTag.get(n.getId()).getValue().get();
     }
 
     public void alterTable(String dbname, String name, Table newTable) throws InvalidObjectException, MetaException {

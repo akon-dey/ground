@@ -186,7 +186,7 @@ public class TestGroundMetastore {
         groundStore.addPartition(part2);
 
         Deadline.startTimer("getPartition");
-        List<Partition> partitions = groundStore.getPartitions(DBPART1, TABLE1, 10);
+        List<Partition> partitions = groundStore.getPartitions(DBPART1, PARTTABLE1, 10);
         Assert.assertEquals(2, partitions.size());
         Assert.assertEquals(111, partitions.get(0).getCreateTime());
         Assert.assertEquals(222, partitions.get(1).getCreateTime());
