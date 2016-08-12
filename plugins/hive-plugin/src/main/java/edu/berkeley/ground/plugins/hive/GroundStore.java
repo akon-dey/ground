@@ -307,9 +307,8 @@ public class GroundStore implements RawStore, Configurable {
             Partition partCopy = part.deepCopy();
             String dbName = part.getDbName();
             String tableName = part.getTableName();
-            ObjectPair<String, String> objectPair = new ObjectPair<>(dbName, tableName);
             partCopy.setDbName(HiveStringUtils.normalizeIdentifier(dbName));
-            String partId = objectPair.toString() + part.getCreateTime();
+            String partId = dbName + tableName + part.getCreateTime();
             partCopy.setTableName(HiveStringUtils.normalizeIdentifier(tableName));
             // edu.berkeley.ground.api.versions.Type partType = edu.berkeley.ground.api.versions.Type.fromString("string");
             Tag partTag = createTag(partId, partCopy);
@@ -320,10 +319,13 @@ public class GroundStore implements RawStore, Configurable {
             HashMap<String, Tag> tags = new HashMap<>();
             tags.put(partId, partTag);
             Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
+            LOG.debug("input partition {}", tagsMap.get().get(partId).getKey(),
+                    tagsMap.get().get(partId).getValue());
             Optional<Map<String, String>> parameters = Optional.of(partCopy.getParameters());
             String name = HiveStringUtils.normalizeIdentifier(partId);
             String nodeId = nf.create(name).getId();
             NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, nodeId, parentId);
+            ObjectPair<String, String> objectPair = new ObjectPair<>(dbName, tableName);
             List<String> partList = partCache.get(objectPair);
             if (partList == null) {
                 partList = new ArrayList<>();
@@ -388,10 +390,20 @@ public class GroundStore implements RawStore, Configurable {
         NodeVersion n;
         try {
             n = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
+            LOG.info("node id {}", n.getId());
         } catch (GroundException e) {
             LOG.error("get failed for id:{}", e);
             throw new MetaException(e.getMessage());
         }
+
+        Optional<Map<String, Tag>> tagMap = n.getTags();
+        Map<String, Tag> map = tagMap.get();
+        LOG.info("node tag size {} {}", n.getTags().get().keySet().size(),
+                n.getTags().get().keySet());
+        for (String t : n.getTags().get().keySet()) {
+            LOG.info("node tag {} {}", t, map.get(t).getValue());
+        }
+        
         Collection<Tag> partTags = n.getTags().get().values();
         List<Partition> partList = new ArrayList<Partition>();
         for (Tag t : partTags) {
