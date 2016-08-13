@@ -246,7 +246,7 @@ public class GroundStore implements RawStore, Configurable {
         return tableNodeVersion;
     }
 
-    private Tag createTag(String id, Object value) {
+    private Tag createTag(String id, Object value) {   
         return createTag(DEFAULT_VERSION, id, value, Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
     }
 
@@ -386,11 +386,8 @@ public class GroundStore implements RawStore, Configurable {
         ObjectPair<String, String> pair = new ObjectPair<>(dbName, tableName);
         List<String> idList = partCache.get(pair);
         int size = max <= idList.size() ? max : idList.size();
-        LOG.info("size of partition array: {} {}", size, idList.size());
+        LOG.debug("size of partition array: {} {}", size, idList.size());
         List<String> subPartlist = idList.subList(0, size);
-        for (String id : subPartlist) {
-            LOG.info("parition node is {}", id);
-        }
         List<Partition> partList = new ArrayList<Partition>();
         for (String id : subPartlist) {
             partList.add(getPartition(id));
@@ -398,22 +395,17 @@ public class GroundStore implements RawStore, Configurable {
         return partList;
     }
 
+    // use NodeVersion ID to retrieve serialized partition string from Ground backend
     private Partition getPartition(String id) throws MetaException, NoSuchObjectException {
         NodeVersion partitonNodeVersion;
         try {
             partitonNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
-            LOG.info("node id {}", partitonNodeVersion.getId());
+            LOG.debug("node id {}", partitonNodeVersion.getId());
         } catch (GroundException e) {
             LOG.error("get failed for id:{}", e);
             throw new MetaException(e.getMessage());
         }
 
-        Optional<Map<String, Tag>> tagMap = partitonNodeVersion.getTags();
-        Map<String, Tag> map = tagMap.get();
-        for (String t : partitonNodeVersion.getTags().get().keySet()) {
-            LOG.info("node tag {} {}", t, map.get(t).getValue());
-        }
-        
         Collection<Tag> partTags = partitonNodeVersion.getTags().get().values();
         List<Partition> partList = new ArrayList<Partition>();
         for (Tag t : partTags) {
@@ -424,10 +416,11 @@ public class GroundStore implements RawStore, Configurable {
         return partList.get(0);
     }
 
+    // Use partition string to generate Partition
     private Partition createPartitionFromString(String partitionString) {
         //TODO fix - need better serde(krishna)
         String[] fields = partitionString.split(",");
-        LOG.info("partitionString: {}, {}", partitionString, fields[1]);
+        LOG.debug("partitionString: {}, {}", partitionString, fields[1]);
         Partition partition = new Partition();
         partition.setDbName(fields[2].split(":")[1]);
         partition.setTableName(fields[3].split(":")[1]);
