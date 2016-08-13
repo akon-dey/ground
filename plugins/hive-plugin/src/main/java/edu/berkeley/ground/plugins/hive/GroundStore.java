@@ -335,14 +335,6 @@ public class GroundStore implements RawStore, Configurable {
             LOG.info("adding partition: {} {}", objectPair, partitionNodeId);
             partCache.put(objectPair, partList);// TODO use hive PartitionCache
             LOG.info("partition list size {}", partList.size());
-
-            // for debugging
-            NodeVersion debugNodeVersion = nvf.retrieveFromDatabase(partitionNodeId);
-            Optional<Map<String, Tag>> debugMap = debugNodeVersion.getTags();
-            Map<String, Tag> map = debugMap.get();
-            for (String t : debugNodeVersion.getTags().get().keySet()) {
-                LOG.info("input partition from node version: {} {}", t, map.get(t).getValue());
-            }
             return true;
         } catch (GroundException e) {
             throw new MetaException("Unable to add partition " + e.getMessage());
