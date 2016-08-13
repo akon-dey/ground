@@ -161,7 +161,6 @@ public class TestGroundMetastore {
         Assert.assertEquals(TABLE1, tables.get(0));
     }
 
-    @Ignore // work in progress
     @Test
     public void testPartitionOps()
             throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {

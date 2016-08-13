@@ -422,18 +422,17 @@ public class GroundStore implements RawStore, Configurable {
             partList.add(partition);
         }
         return partList.get(0);
-        //return (Partition) partTag.get(n.getId()).getValue().get();
     }
 
     private Partition createPartitionFromString(String partitionString) {
         //TODO fix - need better serde(krishna)
         String[] fields = partitionString.split(",");
+        LOG.info("partitionString: {}, {}", partitionString, fields[1]);
         Partition partition = new Partition();
-        LOG.info("partitionString {}", partitionString);
-        partition.setDbName(fields[1].split(":")[1]);
-        partition.setTableName(fields[2].split(":")[1]);
-        partition.setCreateTime(Integer.valueOf(fields[3].split(":")[1]));
+        partition.setDbName(fields[2].split(":")[1]);
+        partition.setTableName(fields[3].split(":")[1]);
         partition.setCreateTime(Integer.valueOf(fields[4].split(":")[1]));
+        partition.setCreateTime(Integer.valueOf(fields[5].split(":")[1]));
         return partition;
     }
 
