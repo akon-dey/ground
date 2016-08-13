@@ -22,6 +22,8 @@ import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.gson.Gson;
+
 import edu.berkeley.ground.api.models.Edge;
 import edu.berkeley.ground.api.models.EdgeFactory;
 import edu.berkeley.ground.api.models.EdgeVersion;
@@ -312,7 +314,8 @@ public class GroundStore implements RawStore, Configurable {
             String partId = objectPair.toString();
             partCopy.setTableName(HiveStringUtils.normalizeIdentifier(tableName));
             // edu.berkeley.ground.api.versions.Type partType = edu.berkeley.ground.api.versions.Type.fromString("string");
-            Tag partTag = createTag(partId, partCopy.toString());
+            Gson gson = new Gson();
+            Tag partTag = createTag(partId, gson.toJson(partCopy));
             Optional<String> reference = Optional.of(partCopy.getSd().getLocation());
             Optional<String> versionId = Optional.empty();
             Optional<String> parentId = Optional.empty(); // fix
@@ -408,17 +411,10 @@ public class GroundStore implements RawStore, Configurable {
         return partList.get(0);
     }
 
-    // Use partition string to generate Partition
+    // Use json serde to get Partition from serialized string
     private Partition createPartitionFromString(String partitionString) {
-        //TODO fix - need better serde(krishna)
-        String[] fields = partitionString.split(",");
-        LOG.debug("partitionString: {}, {}", partitionString, fields[1]);
-        Partition partition = new Partition();
-        partition.setDbName(fields[2].split(":")[1]);
-        partition.setTableName(fields[3].split(":")[1]);
-        partition.setCreateTime(Integer.valueOf(fields[4].split(":")[1]));
-        partition.setCreateTime(Integer.valueOf(fields[5].split(":")[1]));
-        return partition;
+        Gson gson = new Gson();
+        return gson.fromJson(partitionString, Partition.class);
     }
 
     public void alterTable(String dbname, String name, Table newTable) throws InvalidObjectException, MetaException {
