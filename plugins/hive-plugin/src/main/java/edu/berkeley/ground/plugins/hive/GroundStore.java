@@ -247,7 +247,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     private Tag createTag(String id, Object value) {
-        return createTag(DEFAULT_VERSION, id, value, Optional.empty());
+        return createTag(DEFAULT_VERSION, id, value, Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
     }
 
     private Tag createTag(String version, String id, Object value,
@@ -308,24 +308,24 @@ public class GroundStore implements RawStore, Configurable {
             String dbName = part.getDbName();
             String tableName = part.getTableName();
             partCopy.setDbName(HiveStringUtils.normalizeIdentifier(dbName));
-            String partId = dbName + tableName + part.getCreateTime();
+            ObjectPair<String, String> objectPair = new ObjectPair<>(dbName, tableName);
+            String partId = objectPair.toString();
             partCopy.setTableName(HiveStringUtils.normalizeIdentifier(tableName));
             // edu.berkeley.ground.api.versions.Type partType = edu.berkeley.ground.api.versions.Type.fromString("string");
-            Tag partTag = createTag(partId, partCopy);
-            // new Tag(DEFAULT_VERSION, partId, Optional.of(partCopy), Optional.of(partType)); // fix
+            Tag partTag = createTag(partId, partCopy.toString());
             Optional<String> reference = Optional.of(partCopy.getSd().getLocation());
             Optional<String> versionId = Optional.empty();
             Optional<String> parentId = Optional.empty(); // fix
-            HashMap<String, Tag> tags = new HashMap<>();
+            Map<String, Tag> tags = new HashMap<>();
             tags.put(partId, partTag);
-            Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
-            LOG.debug("input partition {}", tagsMap.get().get(partId).getKey(),
-                    tagsMap.get().get(partId).getValue());
+
             Optional<Map<String, String>> parameters = Optional.of(partCopy.getParameters());
-            String name = HiveStringUtils.normalizeIdentifier(partId);
-            String nodeId = nf.create(name).getId();
+            String nodeName = HiveStringUtils.normalizeIdentifier(partId + partCopy.getCreateTime());
+            String nodeId = nf.create(nodeName).getId();
+            Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
+            LOG.info("input partition from tag map: {} {}", tagsMap.get().get(partId).getKey(),
+                    tagsMap.get().get(partId).getValue());
             NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, nodeId, parentId);
-            ObjectPair<String, String> objectPair = new ObjectPair<>(dbName, tableName);
             List<String> partList = partCache.get(objectPair);
             if (partList == null) {
                 partList = new ArrayList<>();
@@ -334,6 +334,15 @@ public class GroundStore implements RawStore, Configurable {
             partList.add(partitionNodeId);
             LOG.info("adding partition: {} {}", objectPair, partitionNodeId);
             partCache.put(objectPair, partList);// TODO use hive PartitionCache
+            LOG.info("partition list size {}", partList.size());
+
+            // for debugging
+            NodeVersion debugNodeVersion = nvf.retrieveFromDatabase(partitionNodeId);
+            Optional<Map<String, Tag>> debugMap = debugNodeVersion.getTags();
+            Map<String, Tag> map = debugMap.get();
+            for (String t : debugNodeVersion.getTags().get().keySet()) {
+                LOG.info("input partition from node version: {} {}", t, map.get(t).getValue());
+            }
             return true;
         } catch (GroundException e) {
             throw new MetaException("Unable to add partition " + e.getMessage());
@@ -379,6 +388,9 @@ public class GroundStore implements RawStore, Configurable {
         int size = max <= idList.size() ? max : idList.size();
         LOG.info("size of partition array: {} {}", size, idList.size());
         List<String> subPartlist = idList.subList(0, size);
+        for (String id : subPartlist) {
+            LOG.info("parition node is {}", id);
+        }
         List<Partition> partList = new ArrayList<Partition>();
         for (String id : subPartlist) {
             partList.add(getPartition(id));
@@ -387,30 +399,42 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     private Partition getPartition(String id) throws MetaException, NoSuchObjectException {
-        NodeVersion n;
+        NodeVersion partitonNodeVersion;
         try {
-            n = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
-            LOG.info("node id {}", n.getId());
+            partitonNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
+            LOG.info("node id {}", partitonNodeVersion.getId());
         } catch (GroundException e) {
             LOG.error("get failed for id:{}", e);
             throw new MetaException(e.getMessage());
         }
 
-        Optional<Map<String, Tag>> tagMap = n.getTags();
+        Optional<Map<String, Tag>> tagMap = partitonNodeVersion.getTags();
         Map<String, Tag> map = tagMap.get();
-        LOG.info("node tag size {} {}", n.getTags().get().keySet().size(),
-                n.getTags().get().keySet());
-        for (String t : n.getTags().get().keySet()) {
+        for (String t : partitonNodeVersion.getTags().get().keySet()) {
             LOG.info("node tag {} {}", t, map.get(t).getValue());
         }
         
-        Collection<Tag> partTags = n.getTags().get().values();
+        Collection<Tag> partTags = partitonNodeVersion.getTags().get().values();
         List<Partition> partList = new ArrayList<Partition>();
         for (Tag t : partTags) {
-            partList.add((Partition) t.getValue().get());
+            String partitionString =  (String) t.getValue().get();
+            Partition partition = createPartitionFromString(partitionString);
+            partList.add(partition);
         }
         return partList.get(0);
         //return (Partition) partTag.get(n.getId()).getValue().get();
+    }
+
+    private Partition createPartitionFromString(String partitionString) {
+        //TODO fix - need better serde(krishna)
+        String[] fields = partitionString.split(",");
+        Partition partition = new Partition();
+        LOG.info("partitionString {}", partitionString);
+        partition.setDbName(fields[1].split(":")[1]);
+        partition.setTableName(fields[2].split(":")[1]);
+        partition.setCreateTime(Integer.valueOf(fields[3].split(":")[1]));
+        partition.setCreateTime(Integer.valueOf(fields[4].split(":")[1]));
+        return partition;
     }
 
     public void alterTable(String dbname, String name, Table newTable) throws InvalidObjectException, MetaException {

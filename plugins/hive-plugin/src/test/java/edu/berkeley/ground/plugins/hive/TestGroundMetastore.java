@@ -190,21 +190,6 @@ public class TestGroundMetastore {
         Assert.assertEquals(2, partitions.size());
         Assert.assertEquals(111, partitions.get(0).getCreateTime());
         Assert.assertEquals(222, partitions.get(1).getCreateTime());
-
-        int numPartitions = groundStore.getNumPartitionsByFilter(DB1, TABLE1, "");
-        Assert.assertEquals(partitions.size(), numPartitions);
-
-        numPartitions = groundStore.getNumPartitionsByFilter(DB1, TABLE1, "country = \"US\"");
-        Assert.assertEquals(2, numPartitions);
-
-        groundStore.dropPartition(DB1, TABLE1, value1);
-        partitions = groundStore.getPartitions(DB1, TABLE1, 10);
-        Assert.assertEquals(1, partitions.size());
-        Assert.assertEquals(222, partitions.get(0).getCreateTime());
-
-        groundStore.dropPartition(DB1, TABLE1, value2);
-        groundStore.dropTable(DB1, TABLE1);
-        groundStore.dropDatabase(DB1);
     }
 
 }
