@@ -147,8 +147,13 @@ public class GroundStore implements RawStore, Configurable {
             throw new NoSuchObjectException(e.getMessage());
         }
         Map<String, Tag> dbTag = databaseNodeVersion.getTags().get();
+        String dbJson = (String) dbTag.get(dbName).getValue().get();
+        return (Database) createMetastoreObject(dbJson, Database.class);
+    }
+
+    private <T> Object createMetastoreObject(String dbJson, Class<T> klass) {
         Gson gson = new Gson();
-        return gson.fromJson((String) dbTag.get(dbName).getValue().get(), Database.class);
+        return gson.fromJson(dbJson, klass);
     }
 
     public boolean dropDatabase(String dbname) throws NoSuchObjectException, MetaException {
@@ -303,8 +308,8 @@ public class GroundStore implements RawStore, Configurable {
             throw new MetaException(e.getMessage());
         }
         Map<String, Tag> tblTag = tableNodeVersion.getTags().get();
-        Gson gson = new Gson();
-        return gson.fromJson((String) tblTag.get(tableName).getValue().get(), Table.class);
+        String tblJson = (String) tblTag.get(dbName).getValue().get();
+        return (Table) createMetastoreObject(tblJson, Table.class);
         // return (Table) tblTag.get(tableName).getValue().get();
     }
 
@@ -412,16 +417,11 @@ public class GroundStore implements RawStore, Configurable {
         List<Partition> partList = new ArrayList<Partition>();
         for (Tag t : partTags) {
             String partitionString =  (String) t.getValue().get();
-            Partition partition = createPartitionFromString(partitionString);
+            Partition partition = (Partition) createMetastoreObject(partitionString,
+                    Partition.class);
             partList.add(partition);
         }
         return partList.get(0);
-    }
-
-    // Use json serde to get Partition from serialized string
-    private Partition createPartitionFromString(String partitionString) {
-        Gson gson = new Gson();
-        return gson.fromJson(partitionString, Partition.class);
     }
 
     public void alterTable(String dbname, String name, Table newTable) throws InvalidObjectException, MetaException {
