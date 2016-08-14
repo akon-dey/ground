@@ -101,6 +101,7 @@ public class GroundStore implements RawStore, Configurable {
     /**
      * create a database using ground APIs. Uses node and node version.
      */
+    @Override
     public void createDatabase(Database db) throws InvalidObjectException, MetaException {
         NodeFactory nf = getGround().getNodeFactory();
         NodeVersionFactory nvf = getGround().getNodeVersionFactory();
@@ -120,10 +121,12 @@ public class GroundStore implements RawStore, Configurable {
 
     private NodeVersion createDatabaseNodeVersion(NodeFactory nf, NodeVersionFactory nvf, Database dbCopy,
             edu.berkeley.ground.api.versions.Type dbType, String dbName) throws GroundException {
-        Tag dbTag = new Tag(DEFAULT_VERSION, dbName, Optional.of(dbCopy), Optional.of(dbType)); // fix
+        Gson gson = new Gson();
+        Tag dbTag = createTag(dbName, gson.toJson(dbCopy));
+        //remove Tag dbTag = new Tag(DEFAULT_VERSION, dbName, Optional.of(dbCopy), Optional.of(dbType)); // fix
         Optional<String> reference = Optional.of(dbCopy.getLocationUri());
         Optional<String> structureVersionId = Optional.empty();
-        Optional<String> parentId = Optional.empty(); // fix
+        Optional<String> parentId = Optional.empty();
         HashMap<String, Tag> tags = new HashMap<>();
         tags.put(dbName, dbTag);
         //create a new tag map and populate all DB related metadata
@@ -133,17 +136,19 @@ public class GroundStore implements RawStore, Configurable {
         return nvf.create(tagsMap, structureVersionId, reference, parameters, nodeId, parentId);
     }
 
-    public Database getDatabase(String name) throws NoSuchObjectException {
-        NodeVersion n;
+    @Override
+    public Database getDatabase(String dbName) throws NoSuchObjectException {
+        NodeVersion databaseNodeVersion;
         try {
-            String id = dbMap.get(name);
-            n = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
+            String id = dbMap.get(dbName);
+            databaseNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
         } catch (GroundException e) {
-            LOG.error("get failed for database ", name, e);
+            LOG.error("get failed for database ", dbName, e);
             throw new NoSuchObjectException(e.getMessage());
         }
-        Map<String, Tag> dbTag = n.getTags().get();
-        return (Database) dbTag.get(name).getValue().get();
+        Map<String, Tag> dbTag = databaseNodeVersion.getTags().get();
+        Gson gson = new Gson();
+        return gson.fromJson((String) dbTag.get(dbName).getValue().get(), Database.class);
     }
 
     public boolean dropDatabase(String dbname) throws NoSuchObjectException, MetaException {
@@ -229,7 +234,8 @@ public class GroundStore implements RawStore, Configurable {
     /** Create node version for the given table. */
     private NodeVersion createTableNodeVersion(Table tblCopy, String dbName, String tableName,
             Map<String, Tag> tagsMap) throws GroundException {
-        Tag tblTag = createTag(tableName, tblCopy);
+        Gson gson = new Gson();
+        Tag tblTag = createTag(tableName, gson.toJson(tblCopy));
         tagsMap.put(tableName, tblTag);
         // create an edge to db which contains this table
         EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
@@ -254,8 +260,7 @@ public class GroundStore implements RawStore, Configurable {
 
     private Tag createTag(String version, String id, Object value,
             Optional<edu.berkeley.ground.api.versions.Type> type) {
-        return new Tag(version, id, Optional.of(value), type /** fix type */
-        );
+        return new Tag(version, id, Optional.of(value), type);
     }
 
     /**
@@ -288,17 +293,19 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public Table getTable(String dbName, String tableName) throws MetaException {
-        NodeVersion n;
+        NodeVersion tableNodeVersion;
         try {
             Map<String, String> tableMap = dbTable.get(dbName);
             String nodeId = tableMap.get(tableName);
-            n = getGround().getNodeVersionFactory().retrieveFromDatabase(nodeId);
+            tableNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(nodeId);
         } catch (GroundException e) {
             LOG.error("get failed for database ", tableName, e);
             throw new MetaException(e.getMessage());
         }
-        Map<String, Tag> tblTag = n.getTags().get();
-        return (Table) tblTag.get(tableName).getValue().get();
+        Map<String, Tag> tblTag = tableNodeVersion.getTags().get();
+        Gson gson = new Gson();
+        return gson.fromJson((String) tblTag.get(tableName).getValue().get(), Table.class);
+        // return (Table) tblTag.get(tableName).getValue().get();
     }
 
     @Override
