@@ -58,8 +58,8 @@ public class GroundStore implements RawStore, Configurable {
         return null;
     }
 
-    public void setConf(Configuration arg0) {
-        // TODO Auto-generated method stub
+    public void setConf(Configuration conf) {
+        GroundReadWrite.setConf(conf);
     }
 
     public void shutdown() {

@@ -40,21 +40,19 @@ import org.apache.hadoop.hive.metastore.api.Role;
 import org.apache.hadoop.hive.metastore.api.SerDeInfo;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
-import org.apache.hadoop.hive.metastore.hbase.HBaseConnection;
 import org.apache.hadoop.hive.ql.io.sarg.SearchArgument;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import edu.berkeley.ground.api.models.cassandra.CassandraEdgeVersionFactory;
-import edu.berkeley.ground.api.models.cassandra.CassandraGraphVersionFactory;
-import edu.berkeley.ground.api.models.cassandra.CassandraNodeVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresEdgeVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresGraphVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresNodeVersionFactory;
 
 public class TestGroundMetastore {
     private GroundStore groundStore = null;
@@ -111,9 +109,9 @@ public class TestGroundMetastore {
         Deadline.registerIfNot(100000);
         conf.setVar(HiveConf.ConfVars.METASTORE_EXPRESSION_PROXY_CLASS, MockPartitionExpressionProxy.class.getName());
         HiveConf.setVar(conf, HiveConf.ConfVars.METASTORE_CONNECTION_DRIVER, "test_connection");
-        conf.set(GRAPHFACTORY_CLASS, CassandraGraphVersionFactory.class.getName());
-        conf.set(NODEFACTORY_CLASS, CassandraNodeVersionFactory.class.getName());
-        conf.set(EDGEFACTORY_CLASS, CassandraEdgeVersionFactory.class.getName());
+        conf.set(GRAPHFACTORY_CLASS, PostgresGraphVersionFactory.class.getName());
+        conf.set(NODEFACTORY_CLASS, PostgresNodeVersionFactory.class.getName());
+        conf.set(EDGEFACTORY_CLASS, PostgresEdgeVersionFactory.class.getName());
         GroundReadWrite.setConf(conf);
         groundStore = new GroundStore();
         groundStore.setConf(conf);
