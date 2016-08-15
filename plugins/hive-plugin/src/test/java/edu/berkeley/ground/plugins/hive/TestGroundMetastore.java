@@ -133,7 +133,7 @@ public class TestGroundMetastore {
         groundStore.createDatabase(db2);
 
         List<String> databases = groundStore.getAllDatabases();
-        Assert.assertEquals(2, databases.size());
+        Assert.assertEquals(3, databases.size());
         Assert.assertEquals(DB2, databases.get(0));
         Assert.assertEquals(DB1, databases.get(1));
     }

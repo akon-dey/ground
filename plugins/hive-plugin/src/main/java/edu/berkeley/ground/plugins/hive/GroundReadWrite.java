@@ -3,8 +3,13 @@ package edu.berkeley.ground.plugins.hive;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.slf4j.Logger;
@@ -28,6 +33,7 @@ import edu.berkeley.ground.api.models.StructureVersionFactory;
 import edu.berkeley.ground.api.models.TagFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresEdgeFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresEdgeVersionFactory;
+import edu.berkeley.ground.api.models.postgres.PostgresGraphVersionFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresNodeFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresNodeVersionFactory;
 import edu.berkeley.ground.api.models.postgres.PostgresRichVersionFactory;
@@ -58,6 +64,11 @@ public class GroundReadWrite {
     private EdgeVersionFactory edgeVersionFactory;
     private TagFactory tagFactory;
     private String factoryType;
+    private Map<String, String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
+    private Map<String, Map<String, String>> dbTable =
+            Collections.synchronizedMap(new HashMap<String, Map<String, String>>());
+    private Map<ObjectPair<String, String>, List<String>> partCache = Collections
+            .synchronizedMap(new HashMap<ObjectPair<String, String>, List<String>>());
 
     @VisibleForTesting
     final static String TEST_CONN = "test_connection";
@@ -89,8 +100,17 @@ public class GroundReadWrite {
      *            Configuration object
      */
     public static synchronized void setConf(Configuration configuration) {
+        /** TODO(krishna) Need to change - temporarily using test connection
+         * for hive command line as well as test.
+         */
         if (staticConf == null) {
-            staticConf = configuration;
+            HiveConf conf = new HiveConf();
+            staticConf = conf;
+            //conf.setVar(HiveConf.ConfVars.METASTORE_EXPRESSION_PROXY_CLASS, MockPartitionExpressionProxy.class.getName());
+            HiveConf.setVar(conf, HiveConf.ConfVars.METASTORE_CONNECTION_DRIVER, "test_connection");
+            conf.set(GRAPHFACTORY_CLASS, PostgresGraphVersionFactory.class.getName());
+            conf.set(NODEFACTORY_CLASS, PostgresNodeVersionFactory.class.getName());
+            conf.set(EDGEFACTORY_CLASS, PostgresEdgeVersionFactory.class.getName());
         } else {
             LOG.info("Attempt to set conf when it has already been set.");
         }
@@ -288,5 +308,29 @@ public class GroundReadWrite {
      */
     void putPartition(Partition partition) throws IOException {
         // TODO (krishna) use hbase model and PartitionCache to store
+    }
+
+    public Map<String, String> getDbMap() {
+        return dbMap;
+    }
+
+    public void setDbMap(Map<String, String> dbMap) {
+        this.dbMap = dbMap;
+    }
+
+    public Map<String, Map<String, String>> getDbTable() {
+        return dbTable;
+    }
+
+    public void setDbTable(Map<String, Map<String, String>> dbTable) {
+        this.dbTable = dbTable;
+    }
+
+    public Map<ObjectPair<String, String>, List<String>> getPartCache() {
+        return partCache;
+    }
+
+    public void setPartCache(Map<ObjectPair<String, String>, List<String>> partCache) {
+        this.partCache = partCache;
     }
 }

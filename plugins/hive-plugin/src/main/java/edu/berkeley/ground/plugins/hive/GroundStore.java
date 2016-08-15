@@ -45,12 +45,9 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite ground = null;
     private Configuration conf;
     private int txnNestLevel;
-    private Map<String, String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
-    private Map<String, Map<String, String>> dbTable =
-            Collections.synchronizedMap(new HashMap<String, Map<String, String>>());
-    private Map<ObjectPair<String, String>, List<String>> partCache = Collections
-            .synchronizedMap(new HashMap<ObjectPair<String, String>, List<String>>());
+
     public GroundStore() {
+        ground = getGround();
     }
 
     public Configuration getConf() {
@@ -112,7 +109,7 @@ public class GroundStore implements RawStore, Configurable {
                     edu.berkeley.ground.api.versions.Type.fromString("string");
             String dbName = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
             NodeVersion n = createDatabaseNodeVersion(nf, nvf, dbCopy, dbType, dbName);
-            dbMap.put(dbName, n.getId());
+            ground.getDbMap().put(dbName, n.getId());
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
@@ -131,7 +128,11 @@ public class GroundStore implements RawStore, Configurable {
         tags.put(dbName, dbTag);
         //create a new tag map and populate all DB related metadata
         Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
-        Optional<Map<String, String>> parameters = Optional.of(dbCopy.getParameters());
+        Map<String, String> dbParamMap = dbCopy.getParameters();
+        if (dbParamMap == null) {
+            dbParamMap = new HashMap<String, String>();
+        }
+        Optional<Map<String, String>> parameters = Optional.of(dbParamMap);
         String nodeId = nf.create(dbName).getId();
         return nvf.create(tagsMap, structureVersionId, reference, parameters, nodeId, parentId);
     }
@@ -140,7 +141,10 @@ public class GroundStore implements RawStore, Configurable {
     public Database getDatabase(String dbName) throws NoSuchObjectException {
         NodeVersion databaseNodeVersion;
         try {
-            String id = dbMap.get(dbName);
+            String id = getGround().getDbMap().get(dbName);
+            if (id == null) {
+                return null;
+            }
             databaseNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
         } catch (GroundException e) {
             LOG.error("get failed for database ", dbName, e);
@@ -174,7 +178,7 @@ public class GroundStore implements RawStore, Configurable {
 
     public List<String> getAllDatabases() throws MetaException {
         List<String> list = new ArrayList<>();
-        list.addAll(dbMap.keySet());
+        list.addAll(getGround().getDbMap().keySet());
         return list;
     }
 
@@ -224,7 +228,8 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     private void updateTableMetadata(Table tblCopy, String dbName, String tableName, NodeVersion tableNodeVersion) {
-        synchronized (dbTable) {
+        synchronized (ground.getDbTable()) {
+            Map<String, Map<String, String>> dbTable = ground.getDbTable();
             if (dbTable.containsKey(dbName)) {
                 dbTable.get(dbName).put(tblCopy.getTableName(),
                         tableNodeVersion.getId());
@@ -253,7 +258,7 @@ public class GroundStore implements RawStore, Configurable {
         NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
                 parameters, nodeId, Optional.empty());
         Edge edge = ef.create(edgeId);
-        String dbNodeId = dbMap.get(dbName);
+        String dbNodeId = ground.getDbMap().get(dbName);
         EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
                 edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
         return tableNodeVersion;
@@ -297,10 +302,14 @@ public class GroundStore implements RawStore, Configurable {
         return false;
     }
 
+    @Override
     public Table getTable(String dbName, String tableName) throws MetaException {
         NodeVersion tableNodeVersion;
         try {
-            Map<String, String> tableMap = dbTable.get(dbName);
+            Map<String, String> tableMap = getGround().getDbTable().get(dbName);
+            if (tableMap == null) {
+                return null; //fix
+            }
             String nodeId = tableMap.get(tableName);
             tableNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(nodeId);
         } catch (GroundException e) {
@@ -341,14 +350,14 @@ public class GroundStore implements RawStore, Configurable {
             LOG.info("input partition from tag map: {} {}", tagsMap.get().get(partId).getKey(),
                     tagsMap.get().get(partId).getValue());
             NodeVersion n = nvf.create(tagsMap, versionId, reference, parameters, nodeId, parentId);
-            List<String> partList = partCache.get(objectPair);
+            List<String> partList = ground.getPartCache().get(objectPair);
             if (partList == null) {
                 partList = new ArrayList<>();
             }
             String partitionNodeId = n.getId();
             partList.add(partitionNodeId);
             LOG.info("adding partition: {} {}", objectPair, partitionNodeId);
-            partCache.put(objectPair, partList);// TODO use hive PartitionCache
+            ground.getPartCache().put(objectPair, partList);// TODO use hive PartitionCache
             LOG.info("partition list size {}", partList.size());
             return true;
         } catch (GroundException e) {
@@ -391,7 +400,7 @@ public class GroundStore implements RawStore, Configurable {
     public List<Partition> getPartitions(String dbName, String tableName, int max)
             throws MetaException, NoSuchObjectException {
         ObjectPair<String, String> pair = new ObjectPair<>(dbName, tableName);
-        List<String> idList = partCache.get(pair);
+        List<String> idList = ground.getPartCache().get(pair);
         int size = max <= idList.size() ? max : idList.size();
         LOG.debug("size of partition array: {} {}", size, idList.size());
         List<String> subPartlist = idList.subList(0, size);
@@ -430,8 +439,7 @@ public class GroundStore implements RawStore, Configurable {
     }
 
     public List<String> getTables(String dbName, String pattern) throws MetaException {
-        // TODO Auto-generated method stub
-        return null;
+        return getAllTables(dbName); //fix regex
     }
 
     public List<TableMeta> getTableMeta(String dbNames, String tableNames, List<String> tableTypes)
@@ -448,7 +456,7 @@ public class GroundStore implements RawStore, Configurable {
 
     public List<String> getAllTables(String dbName) throws MetaException {
         ArrayList<String> list = new ArrayList<String>();
-        list.addAll(dbTable.get(dbName).keySet());
+        list.addAll(ground.getDbTable().get(dbName).keySet());
         return list;
     }
 
@@ -970,8 +978,8 @@ public class GroundStore implements RawStore, Configurable {
 
     public void createTableWithConstraints(Table tbl, List<SQLPrimaryKey> primaryKeys, List<SQLForeignKey> foreignKeys)
             throws InvalidObjectException, MetaException {
-        // TODO Auto-generated method stub
-
+        // TODO (FIX)
+        createTable(tbl);
     }
 
     public void dropConstraint(String dbName, String tableName, String constraintName) throws NoSuchObjectException {
@@ -992,7 +1000,7 @@ public class GroundStore implements RawStore, Configurable {
     private GroundReadWrite getGround() {
         if (ground == null) {
             GroundReadWrite.setConf(conf);
-            ground = GroundReadWrite.getInstance();
+            this.ground = GroundReadWrite.getInstance();
         }
         return ground;
     }
