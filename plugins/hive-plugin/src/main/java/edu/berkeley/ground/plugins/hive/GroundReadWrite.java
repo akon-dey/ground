@@ -1,8 +1,6 @@
 package edu.berkeley.ground.plugins.hive;
 
 import java.io.IOException;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -75,8 +73,6 @@ public class GroundReadWrite {
     private static GroundDBConnection testConn;
 
     private static Configuration staticConf = null;
-    private final Configuration conf;
-
     private GroundDBConnection conn;
 
     private NodeFactory nodeFactory;
@@ -94,7 +90,7 @@ public class GroundReadWrite {
     };
 
     /**
-     * Set the configuration for all HBaseReadWrite instances.
+     * Set the configuration for all GroundReadWrite instances.
      * 
      * @param configuration
      *            Configuration object
@@ -126,48 +122,31 @@ public class GroundReadWrite {
         return self.get();
     }
 
-    private GroundReadWrite(Configuration configuration) {
-        conf = configuration;
+    private GroundReadWrite(Configuration conf) {
         try {
             String clientClass = HiveConf.getVar(conf, HiveConf.ConfVars.METASTORE_CONNECTION_DRIVER);
-            String graphFactoryType = conf.get(GRAPHFACTORY_CLASS);
-            String nodeFactoryType = conf.get(NODEFACTORY_CLASS);
-            String edgeFactoryType = conf.get(EDGEFACTORY_CLASS);
             LOG.info("client cass is " + clientClass);
             if (TEST_CONN.equals(clientClass)) {
                 setConn(testConn);
-                LOG.info("Using test connection.");
-                createTestInstances();
+                LOG.info("Using test connection."); // for unit and integration test
+                dbClient = new PostgresClient("127.0.0.1", 5432, "test", "test", "test");
+                createInstance();
             } else {
+                String host = conf.get("edu.berkeley.ground.model.config.host");
+                int port = conf.getInt("edu.berkeley.ground.model.config.port", 5432);
+                String dbName = conf.get("edu.berkeley.ground.model.config.port");
+                String userName = conf.get("edu.berkeley.ground.model.config.user");
+                String password = conf.get("edu.berkeley.ground.model.config.password");
+                dbClient = new PostgresClient(host, port, dbName, userName, password);
                 LOG.debug("Instantiating connection class " + clientClass);
-                Object o = createInstance(clientClass);
-                if (DBClient.class.isAssignableFrom(o.getClass())) {
-                    dbClient = (DBClient) o;
-                    setConn(dbClient.getConnection());
-                } else {
-                    throw new IOException(clientClass + " is not an instance of DBClient.");
-                }
-                o = createInstance(graphFactoryType);
-                if (GraphVersionFactory.class.isAssignableFrom(o.getClass())) {
-                    graphFactory = (GraphVersionFactory) o;
-                }
-                o = createInstance(nodeFactoryType);
-                if (NodeVersionFactory.class.isAssignableFrom(o.getClass())) {
-                    nodeVersionFactory = (NodeVersionFactory) o;
-                }
-                o = createInstance(edgeFactoryType);
-                if (EdgeVersionFactory.class.isAssignableFrom(o.getClass())) {
-                    edgeVersionFactory = (EdgeVersionFactory) o;
-                }
+                createInstance();
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private void createTestInstances() throws GroundDBException {
-        // TODO move this
-        dbClient = new PostgresClient("127.0.0.1", 5432, "test", "test", "test");
+    private void createInstance() throws GroundDBException {
         PostgresVersionSuccessorFactory succ = new PostgresVersionSuccessorFactory();
         PostgresVersionHistoryDAGFactory dagFactory = new PostgresVersionHistoryDAGFactory(succ);
         PostgresItemFactory itemFactory = new PostgresItemFactory(dagFactory);
@@ -187,28 +166,6 @@ public class GroundReadWrite {
         LOG.info("postgresclient " + dbClient.getConnection().toString());
         nodeVersionFactory = new PostgresNodeVersionFactory((PostgresNodeFactory) nodeFactory,
                 (PostgresRichVersionFactory) rf, (PostgresClient) dbClient);
-    }
-
-    private Object createInstance(String clientClass)
-            throws ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchMethodException,
-            SecurityException, IllegalArgumentException, InvocationTargetException {
-        if (clientClass.contains("NodeVersion")) {
-            Constructor<?> cons = Class.forName(clientClass).getConstructor(NodeFactory.class, RichVersionFactory.class,
-                    DBClient.class);
-            // get details from conf
-            return cons.newInstance(null, null, null); // TODO use conf
-        }
-        if (clientClass.contains("EdgeVersion")) {
-            Constructor<?> cons = Class.forName(clientClass).getConstructor(EdgeVersionFactory.class, ItemFactory.class,
-                    DBClient.class);
-            return cons.newInstance(null, null, null); // TODO use conf
-        }
-        if (clientClass.contains("GraphVersion")) {
-            Constructor<?> cons = Class.forName(clientClass).getConstructor(GraphFactory.class,
-                    RichVersionFactory.class, DBClient.class);
-            return cons.newInstance(null, null, null); // TODO use conf
-        }
-        return null;
     }
 
     /**

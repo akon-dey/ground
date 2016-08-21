@@ -50,9 +50,9 @@ public class GroundStore implements RawStore, Configurable {
         ground = getGround();
     }
 
+    @Override
     public Configuration getConf() {
-        // TODO Auto-generated method stub
-        return null;
+        return conf;
     }
 
     public void setConf(Configuration conf) {
@@ -69,6 +69,7 @@ public class GroundStore implements RawStore, Configurable {
         }
     }
 
+    @Override
     public boolean openTransaction() {
         if (txnNestLevel++ <= 0) {
             LOG.debug("Opening Ground transaction");
@@ -78,21 +79,14 @@ public class GroundStore implements RawStore, Configurable {
         return true;
     }
 
+    @Override
     public boolean commitTransaction() {
-        if (--txnNestLevel == 0) {
-            LOG.debug("Committing HBase transaction");
-            getGround().commit();
-        }
-        return true;
+        throw new UnsupportedOperationException();
     }
 
+    @Override
     public void rollbackTransaction() {
-        try {
-            // need a better one
-            getGround().close();
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-        }
+        throw new UnsupportedOperationException();
     }
 
     /**
@@ -166,16 +160,19 @@ public class GroundStore implements RawStore, Configurable {
         return false;
     }
 
+    @Override
     public boolean alterDatabase(String dbname, Database db) throws NoSuchObjectException, MetaException {
         // TODO Auto-generated method stub
         return false;
     }
 
+    @Override
     public List<String> getDatabases(String pattern) throws MetaException {
         // TODO Auto-generated method stub
         return null;
     }
 
+    @Override
     public List<String> getAllDatabases() throws MetaException {
         List<String> list = new ArrayList<>();
         list.addAll(getGround().getDbMap().keySet());
@@ -241,60 +238,6 @@ public class GroundStore implements RawStore, Configurable {
         }
     }
 
-    /** Create node version for the given table. */
-    private NodeVersion createTableNodeVersion(Table tblCopy, String dbName, String tableName,
-            Map<String, Tag> tagsMap) throws GroundException {
-        Gson gson = new Gson();
-        Tag tblTag = createTag(tableName, gson.toJson(tblCopy));
-        tagsMap.put(tableName, tblTag);
-        // create an edge to db which contains this table
-        EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
-        EdgeFactory ef = getGround().getEdgeFactory();
-        String edgeId = dbName + "." + tableName;
-        Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
-        Optional<Map<String, String>> parameters = Optional.of(tblCopy.getParameters());
-        // new node for this table
-        String nodeId = getGround().getNodeFactory().create(tableName).getId();
-        NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
-                parameters, nodeId, Optional.empty());
-        Edge edge = ef.create(edgeId);
-        String dbNodeId = ground.getDbMap().get(dbName);
-        EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-                edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
-        return tableNodeVersion;
-    }
-
-    private Tag createTag(String id, Object value) {   
-        return createTag(DEFAULT_VERSION, id, value, Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
-    }
-
-    private Tag createTag(String version, String id, Object value,
-            Optional<edu.berkeley.ground.api.versions.Type> type) {
-        return new Tag(version, id, Optional.of(value), type);
-    }
-
-    /**
-     * this code is identical to HBaseStore - refactor
-     * 
-     * @param tbl
-     */
-    private void normalizeColumnNames(Table tbl) {
-        if (tbl.getSd().getCols() != null) {
-            tbl.getSd().setCols(normalizeFieldSchemaList(tbl.getSd().getCols()));
-        }
-        if (tbl.getPartitionKeys() != null) {
-            tbl.setPartitionKeys(normalizeFieldSchemaList(tbl.getPartitionKeys()));
-        }
-    }
-
-    private List<FieldSchema> normalizeFieldSchemaList(List<FieldSchema> fieldschemas) {
-        List<FieldSchema> ret = new ArrayList<>();
-        for (FieldSchema fieldSchema : fieldschemas) {
-            ret.add(new FieldSchema(fieldSchema.getName().toLowerCase(), fieldSchema.getType(),
-                    fieldSchema.getComment()));
-        }
-        return ret;
-    }
 
     public boolean dropTable(String dbName, String tableName)
             throws MetaException, NoSuchObjectException, InvalidObjectException, InvalidInputException {
@@ -384,6 +327,7 @@ public class GroundStore implements RawStore, Configurable {
         return null;
     }
 
+    @Override
     public boolean doesPartitionExist(String dbName, String tableName, List<String> part_vals)
             throws MetaException, NoSuchObjectException {
         // TODO Auto-generated method stub
@@ -409,28 +353,6 @@ public class GroundStore implements RawStore, Configurable {
             partList.add(getPartition(id));
         }
         return partList;
-    }
-
-    // use NodeVersion ID to retrieve serialized partition string from Ground backend
-    private Partition getPartition(String id) throws MetaException, NoSuchObjectException {
-        NodeVersion partitonNodeVersion;
-        try {
-            partitonNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
-            LOG.debug("node id {}", partitonNodeVersion.getId());
-        } catch (GroundException e) {
-            LOG.error("get failed for id:{}", e);
-            throw new MetaException(e.getMessage());
-        }
-
-        Collection<Tag> partTags = partitonNodeVersion.getTags().get().values();
-        List<Partition> partList = new ArrayList<Partition>();
-        for (Tag t : partTags) {
-            String partitionString =  (String) t.getValue().get();
-            Partition partition = (Partition) createMetastoreObject(partitionString,
-                    Partition.class);
-            partList.add(partition);
-        }
-        return partList.get(0);
     }
 
     public void alterTable(String dbname, String name, Table newTable) throws InvalidObjectException, MetaException {
@@ -1003,5 +925,83 @@ public class GroundStore implements RawStore, Configurable {
             this.ground = GroundReadWrite.getInstance();
         }
         return ground;
+    }
+
+
+    /** Create node version for the given table. */
+    private NodeVersion createTableNodeVersion(Table tblCopy, String dbName, String tableName,
+            Map<String, Tag> tagsMap) throws GroundException {
+        Gson gson = new Gson();
+        Tag tblTag = createTag(tableName, gson.toJson(tblCopy));
+        tagsMap.put(tableName, tblTag);
+        // create an edge to db which contains this table
+        EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
+        EdgeFactory ef = getGround().getEdgeFactory();
+        String edgeId = dbName + "." + tableName;
+        Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
+        Optional<Map<String, String>> parameters = Optional.of(tblCopy.getParameters());
+        // new node for this table
+        String nodeId = getGround().getNodeFactory().create(tableName).getId();
+        NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
+                parameters, nodeId, Optional.empty());
+        Edge edge = ef.create(edgeId);
+        String dbNodeId = ground.getDbMap().get(dbName);
+        EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
+        return tableNodeVersion;
+    }
+
+    private Tag createTag(String id, Object value) {   
+        return createTag(DEFAULT_VERSION, id, value, Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
+    }
+
+    private Tag createTag(String version, String id, Object value,
+            Optional<edu.berkeley.ground.api.versions.Type> type) {
+        return new Tag(version, id, Optional.of(value), type);
+    }
+
+    /**
+     * Using utilities from Hive HBaseStore
+     * 
+     * @param tbl
+     */
+    private void normalizeColumnNames(Table tbl) {
+        if (tbl.getSd().getCols() != null) {
+            tbl.getSd().setCols(normalizeFieldSchemaList(tbl.getSd().getCols()));
+        }
+        if (tbl.getPartitionKeys() != null) {
+            tbl.setPartitionKeys(normalizeFieldSchemaList(tbl.getPartitionKeys()));
+        }
+    }
+
+    private List<FieldSchema> normalizeFieldSchemaList(List<FieldSchema> fieldschemas) {
+        List<FieldSchema> ret = new ArrayList<>();
+        for (FieldSchema fieldSchema : fieldschemas) {
+            ret.add(new FieldSchema(fieldSchema.getName().toLowerCase(), fieldSchema.getType(),
+                    fieldSchema.getComment()));
+        }
+        return ret;
+    }
+
+    // use NodeVersion ID to retrieve serialized partition string from Ground backend
+    private Partition getPartition(String id) throws MetaException, NoSuchObjectException {
+        NodeVersion partitonNodeVersion;
+        try {
+            partitonNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
+            LOG.debug("node id {}", partitonNodeVersion.getId());
+        } catch (GroundException e) {
+            LOG.error("get failed for id:{}", e);
+            throw new MetaException(e.getMessage());
+        }
+
+        Collection<Tag> partTags = partitonNodeVersion.getTags().get().values();
+        List<Partition> partList = new ArrayList<Partition>();
+        for (Tag t : partTags) {
+            String partitionString =  (String) t.getValue().get();
+            Partition partition = (Partition) createMetastoreObject(partitionString,
+                    Partition.class);
+            partList.add(partition);
+        }
+        return partList.get(0);
     }
 }
