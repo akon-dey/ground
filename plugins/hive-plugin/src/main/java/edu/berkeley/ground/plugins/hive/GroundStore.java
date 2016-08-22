@@ -125,7 +125,6 @@ public class GroundStore implements RawStore, Configurable {
             edu.berkeley.ground.api.versions.Type dbType, String dbName) throws GroundException {
         Gson gson = new Gson();
         Tag dbTag = createTag(dbName, gson.toJson(dbCopy));
-        Tag dbStatusTag = createTag("dbStatus", EntityState.ACTIVE);
         //remove Tag dbTag = new Tag(DEFAULT_VERSION, dbName, Optional.of(dbCopy), Optional.of(dbType)); // fix
         Optional<String> reference = Optional.of(dbCopy.getLocationUri());
         Optional<String> structureVersionId = Optional.empty();
