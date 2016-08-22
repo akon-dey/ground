@@ -1,10 +1,12 @@
 package edu.berkeley.ground.plugins.hive;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.ObjectPair;
@@ -46,6 +48,8 @@ import edu.berkeley.ground.api.versions.postgres.PostgresVersionHistoryDAGFactor
 import edu.berkeley.ground.api.versions.postgres.PostgresVersionSuccessorFactory;
 
 public class GroundReadWrite {
+
+    private static final String GROUNDCONF = "ground.properties";
 
     static final private Logger LOG = LoggerFactory.getLogger(GroundReadWrite.class.getName());
 
@@ -95,12 +99,11 @@ public class GroundReadWrite {
      * @param configuration
      *            Configuration object
      */
-    public static synchronized void setConf(Configuration configuration) {
+    public static synchronized void setConf(Configuration conf) {
         /** TODO(krishna) Need to change - temporarily using test connection
          * for hive command line as well as test.
          */
         if (staticConf == null) {
-            HiveConf conf = new HiveConf();
             staticConf = conf;
             //conf.setVar(HiveConf.ConfVars.METASTORE_EXPRESSION_PROXY_CLASS, MockPartitionExpressionProxy.class.getName());
             HiveConf.setVar(conf, HiveConf.ConfVars.METASTORE_CONNECTION_DRIVER, "test_connection");
@@ -123,8 +126,21 @@ public class GroundReadWrite {
     }
 
     private GroundReadWrite(Configuration conf) {
+        Properties props = new Properties();
         try {
-            String clientClass = HiveConf.getVar(conf, HiveConf.ConfVars.METASTORE_CONNECTION_DRIVER);
+            String groundPropertyResource = GROUNDCONF; //ground properties from resources
+            ClassLoader loader = Thread.currentThread().getContextClassLoader();
+            try(InputStream resourceStream = loader.getResourceAsStream(groundPropertyResource)) {
+                props.load(resourceStream);
+                resourceStream.close();
+            }
+            //
+            String clientClass = props.getProperty("edu.berkeley.ground.model.config.dbClient");
+            String host = props.getProperty("edu.berkeley.ground.model.config.host");
+            int port = new Integer(props.getProperty("edu.berkeley.ground.model.config.port"));
+            String dbName = props.getProperty("edu.berkeley.ground.model.config.dbName");
+            String userName = props.getProperty("edu.berkeley.ground.model.config.user");
+            String password = props.getProperty("edu.berkeley.ground.model.config.password");
             LOG.info("client cass is " + clientClass);
             if (TEST_CONN.equals(clientClass)) {
                 setConn(testConn);
@@ -132,11 +148,12 @@ public class GroundReadWrite {
                 dbClient = new PostgresClient("127.0.0.1", 5432, "test", "test", "test");
                 createInstance();
             } else {
-                String host = conf.get("edu.berkeley.ground.model.config.host");
-                int port = conf.getInt("edu.berkeley.ground.model.config.port", 5432);
-                String dbName = conf.get("edu.berkeley.ground.model.config.port");
-                String userName = conf.get("edu.berkeley.ground.model.config.user");
-                String password = conf.get("edu.berkeley.ground.model.config.password");
+                conf.set("edu.berkeley.ground.model.config.clientClass", clientClass);
+                conf.set("edu.berkeley.ground.model.config.host", host);
+                conf.set("edu.berkeley.ground.model.config.dbName", dbName);
+                conf.set("edu.berkeley.ground.model.config.userName", userName);
+                conf.set("edu.berkeley.ground.model.config.password", password);
+                conf.setInt("edu.berkeley.ground.model.config.port", port);
                 dbClient = new PostgresClient(host, port, dbName, userName, password);
                 LOG.debug("Instantiating connection class " + clientClass);
                 createInstance();

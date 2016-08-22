@@ -14,7 +14,10 @@ import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.api.*; //TODO(krishna) fix
 import org.apache.hadoop.hive.common.ObjectPair;
+import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.FileMetadataHandler;
+import org.apache.hadoop.hive.metastore.HiveMetaStore;
+import org.apache.hadoop.hive.metastore.PartFilterExprUtil;
 import org.apache.hadoop.hive.metastore.RawStore;
 import org.apache.hadoop.hive.metastore.partition.spec.PartitionSpecProxy;
 import org.apache.hive.common.util.HiveStringUtils;
@@ -55,8 +58,9 @@ public class GroundStore implements RawStore, Configurable {
         return conf;
     }
 
-    public void setConf(Configuration conf) {
-        GroundReadWrite.setConf(conf);
+    @Override
+    public void setConf(Configuration configuration) {
+        conf = configuration;
     }
 
     public void shutdown() {
@@ -914,6 +918,7 @@ public class GroundStore implements RawStore, Configurable {
 
     }
 
+    @Override
     public void addForeignKeys(List<SQLForeignKey> fks) throws InvalidObjectException, MetaException {
         // TODO Auto-generated method stub
 
@@ -921,6 +926,9 @@ public class GroundStore implements RawStore, Configurable {
 
     private GroundReadWrite getGround() {
         if (ground == null) {
+            if (conf == null) {
+                conf = new HiveConf();
+            }
             GroundReadWrite.setConf(conf);
             this.ground = GroundReadWrite.getInstance();
         }
