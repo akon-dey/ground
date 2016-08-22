@@ -2,6 +2,7 @@ package edu.berkeley.ground.plugins.hive;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Constructor;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -66,7 +67,8 @@ public class GroundReadWrite {
     private EdgeVersionFactory edgeVersionFactory;
     private TagFactory tagFactory;
     private String factoryType;
-    private Map<String, String> dbMap = Collections.synchronizedMap(new HashMap<String, String>());
+    private Map<String, ObjectPair<String, Object>> dbMap =
+            Collections.synchronizedMap(new HashMap<String, ObjectPair<String, Object>>());
     private Map<String, Map<String, String>> dbTable =
             Collections.synchronizedMap(new HashMap<String, Map<String, String>>());
     private Map<ObjectPair<String, String>, List<String>> partCache = Collections
@@ -154,7 +156,11 @@ public class GroundReadWrite {
                 conf.set("edu.berkeley.ground.model.config.userName", userName);
                 conf.set("edu.berkeley.ground.model.config.password", password);
                 conf.setInt("edu.berkeley.ground.model.config.port", port);
-                dbClient = new PostgresClient(host, port, dbName, userName, password);
+                Class<?> clazz = Class.forName(clientClass);
+                Constructor<?> constructor = clazz.getConstructor(String.class, Integer.class,
+                        String.class, String.class, String.class);
+                dbClient = (DBClient) constructor.newInstance(host, port, dbName, userName, password);
+                // dbClient = new PostgresClient(host, port, dbName, userName, password);
                 LOG.debug("Instantiating connection class " + clientClass);
                 createInstance();
             }
@@ -284,11 +290,11 @@ public class GroundReadWrite {
         // TODO (krishna) use hbase model and PartitionCache to store
     }
 
-    public Map<String, String> getDbMap() {
+    public Map<String, ObjectPair<String, Object>> getDbMap() {
         return dbMap;
     }
 
-    public void setDbMap(Map<String, String> dbMap) {
+    public void setDbMap(Map<String, ObjectPair<String, Object>> dbMap) {
         this.dbMap = dbMap;
     }
 

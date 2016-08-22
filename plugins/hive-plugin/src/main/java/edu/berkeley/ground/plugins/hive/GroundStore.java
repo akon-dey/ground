@@ -49,6 +49,10 @@ public class GroundStore implements RawStore, Configurable {
     private Configuration conf;
     private int txnNestLevel;
 
+    public static enum EntityState {
+        ACTIVE, DELETED;
+    }
+
     public GroundStore() {
         ground = getGround();
     }
@@ -63,6 +67,7 @@ public class GroundStore implements RawStore, Configurable {
         conf = configuration;
     }
 
+    @Override
     public void shutdown() {
         try {
             if (txnNestLevel != 0)
@@ -85,12 +90,13 @@ public class GroundStore implements RawStore, Configurable {
 
     @Override
     public boolean commitTransaction() {
-        throw new UnsupportedOperationException();
+        return true;
+        // throw new UnsupportedOperationException();
     }
 
     @Override
     public void rollbackTransaction() {
-        throw new UnsupportedOperationException();
+        // throw new UnsupportedOperationException();
     }
 
     /**
@@ -107,7 +113,8 @@ public class GroundStore implements RawStore, Configurable {
                     edu.berkeley.ground.api.versions.Type.fromString("string");
             String dbName = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
             NodeVersion n = createDatabaseNodeVersion(nf, nvf, dbCopy, dbType, dbName);
-            ground.getDbMap().put(dbName, n.getId());
+            ObjectPair<String, Object> dbVersion = new ObjectPair<>(n.getId(), EntityState.ACTIVE); 
+            ground.getDbMap().put(dbName, dbVersion);
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
@@ -118,6 +125,7 @@ public class GroundStore implements RawStore, Configurable {
             edu.berkeley.ground.api.versions.Type dbType, String dbName) throws GroundException {
         Gson gson = new Gson();
         Tag dbTag = createTag(dbName, gson.toJson(dbCopy));
+        Tag dbStatusTag = createTag("dbStatus", EntityState.ACTIVE);
         //remove Tag dbTag = new Tag(DEFAULT_VERSION, dbName, Optional.of(dbCopy), Optional.of(dbType)); // fix
         Optional<String> reference = Optional.of(dbCopy.getLocationUri());
         Optional<String> structureVersionId = Optional.empty();
@@ -137,30 +145,23 @@ public class GroundStore implements RawStore, Configurable {
 
     @Override
     public Database getDatabase(String dbName) throws NoSuchObjectException {
-        NodeVersion databaseNodeVersion;
-        try {
-            String id = getGround().getDbMap().get(dbName);
-            if (id == null) {
-                return null;
-            }
-            databaseNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
-        } catch (GroundException e) {
-            LOG.error("get failed for database ", dbName, e);
-            throw new NoSuchObjectException(e.getMessage());
+        NodeVersion databaseNodeVersion = getNodeVersion(dbName);
+        if (databaseNodeVersion == null) {
+            return null;
         }
         Map<String, Tag> dbTag = databaseNodeVersion.getTags().get();
         String dbJson = (String) dbTag.get(dbName).getValue().get();
         return (Database) createMetastoreObject(dbJson, Database.class);
     }
 
-    private <T> Object createMetastoreObject(String dbJson, Class<T> klass) {
-        Gson gson = new Gson();
-        return gson.fromJson(dbJson, klass);
-    }
-
-    public boolean dropDatabase(String dbname) throws NoSuchObjectException, MetaException {
-        Database db = getDatabase(dbname);
-        db.clear(); // TODO
+    @Override
+    public boolean dropDatabase(String dbName) throws NoSuchObjectException, MetaException {
+        EntityState state = (EntityState) getGround().getDbMap().get(dbName).getSecond();
+        if (state != null && state.equals(EntityState.ACTIVE)) {
+            ObjectPair<String, Object> updatedState = new ObjectPair<String, Object>(dbName, EntityState.DELETED);
+            getGround().getDbMap().put(dbName, updatedState);
+            return true;
+        }
         return false;
     }
 
@@ -183,19 +184,19 @@ public class GroundStore implements RawStore, Configurable {
         return list;
     }
 
+    @Override
     public boolean createType(Type type) {
-        // TODO Auto-generated method stub
-        return false;
+        throw new UnsupportedOperationException();
     }
 
+    @Override
     public Type getType(String typeName) {
-        // TODO Auto-generated method stub
-        return null;
+        throw new UnsupportedOperationException();
     }
 
+    @Override
     public boolean dropType(String typeName) {
-        // TODO Auto-generated method stub
-        return false;
+        throw new UnsupportedOperationException();
     }
 
     /**
@@ -255,7 +256,7 @@ public class GroundStore implements RawStore, Configurable {
         try {
             Map<String, String> tableMap = getGround().getDbTable().get(dbName);
             if (tableMap == null) {
-                return null; //fix
+                return null;
             }
             String nodeId = tableMap.get(tableName);
             tableNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(nodeId);
@@ -924,6 +925,25 @@ public class GroundStore implements RawStore, Configurable {
 
     }
 
+    /** Given an entity name retrieve its node version from database. */
+    private NodeVersion getNodeVersion(String name) throws NoSuchObjectException {
+        try {
+            ObjectPair<String, Object> dbPair = (ObjectPair<String, Object>) getGround().getDbMap().get(name);
+            if (dbPair == null) {
+                return null;
+            }
+            return getGround().getNodeVersionFactory().retrieveFromDatabase((String)dbPair.getFirst());
+        } catch (GroundException e) {
+            LOG.error("get failed for database ", name, e);
+            throw new NoSuchObjectException(e.getMessage());
+        }
+    }
+
+    private <T> Object createMetastoreObject(String dbJson, Class<T> klass) {
+        Gson gson = new Gson();
+        return gson.fromJson(dbJson, klass);
+    }
+
     private GroundReadWrite getGround() {
         if (ground == null) {
             if (conf == null) {
@@ -953,7 +973,7 @@ public class GroundStore implements RawStore, Configurable {
         NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
                 parameters, nodeId, Optional.empty());
         Edge edge = ef.create(edgeId);
-        String dbNodeId = ground.getDbMap().get(dbName);
+        String dbNodeId = (String) ground.getDbMap().get(dbName).getFirst();
         EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
                 edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
         return tableNodeVersion;
