@@ -221,22 +221,26 @@ public class GroundStore implements RawStore, Configurable {
             tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
             normalizeColumnNames(tblCopy);
             NodeVersion tableNodeVersion = createTableNodeVersion(tblCopy, dbName, tableName, tagsMap);
-            updateTableMetadata(tblCopy, dbName, tableName, tableNodeVersion);
+            ObjectPair<String, Object> tableState =
+                    new ObjectPair<>(tableNodeVersion.getId(), EntityState.ACTIVE);
+            updateTableMetadata(tblCopy, dbName, tableName, tableState);
         } catch (GroundException e) {
             LOG.error("Unable to create table{} ", e);
             throw new MetaException("Unable to read from or write ground database " + e.getMessage());
         }
     }
 
-    private void updateTableMetadata(Table tblCopy, String dbName, String tableName, NodeVersion tableNodeVersion) {
+    private void updateTableMetadata(Table tblCopy, String dbName, String tableName,
+            ObjectPair<String, Object> tableState) {
         synchronized (ground.getDbTable()) {
-            Map<String, Map<String, String>> dbTable = ground.getDbTable();
+            Map<String, Map<String, ObjectPair<String, Object>>> dbTable = ground.getDbTable();
             if (dbTable.containsKey(dbName)) {
                 dbTable.get(dbName).put(tblCopy.getTableName(),
-                        tableNodeVersion.getId());
+                        tableState);
             } else {
-                Map<String, String> tableMap = new HashMap<String, String>();
-                tableMap.put(tableName, tableNodeVersion.getId());
+                Map<String, ObjectPair<String, Object>> tableMap =
+                        new HashMap<String, ObjectPair<String, Object>>();
+                tableMap.put(tableName, tableState);
                 dbTable.put(dbName, tableMap);
             }
         }
@@ -245,7 +249,13 @@ public class GroundStore implements RawStore, Configurable {
 
     public boolean dropTable(String dbName, String tableName)
             throws MetaException, NoSuchObjectException, InvalidObjectException, InvalidInputException {
-        // TODO (krishna) I stashed this change will update after adding a test
+        EntityState state = (EntityState) getGround().getDbTable().get(dbName).get(tableName).getSecond();
+        if (state != null && state.equals(EntityState.ACTIVE)) {
+            ObjectPair<String, Object> updatedState =
+                    new ObjectPair<String, Object>(tableName, EntityState.DELETED);
+            getGround().getDbTable().get(dbName).put(tableName, updatedState);
+            return true;
+        }
         return false;
     }
 
@@ -253,11 +263,11 @@ public class GroundStore implements RawStore, Configurable {
     public Table getTable(String dbName, String tableName) throws MetaException {
         NodeVersion tableNodeVersion;
         try {
-            Map<String, String> tableMap = getGround().getDbTable().get(dbName);
+            Map<String, ObjectPair<String, Object>> tableMap = getGround().getDbTable().get(dbName);
             if (tableMap == null) {
                 return null;
             }
-            String nodeId = tableMap.get(tableName);
+            String nodeId = tableMap.get(tableName).getFirst();
             tableNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(nodeId);
         } catch (GroundException e) {
             LOG.error("get failed for database ", tableName, e);

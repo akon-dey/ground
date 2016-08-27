@@ -158,6 +158,7 @@ public class TestGroundMetastore {
         List<String> tables = groundStore.getAllTables(DBTBL1);
         Assert.assertEquals(1, tables.size());
         Assert.assertEquals(TABLE1, tables.get(0));
+        Assert.assertEquals(true,groundStore.dropTable(DBTBL1, TABLE1));
     }
 
     @Test

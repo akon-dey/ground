@@ -69,8 +69,8 @@ public class GroundReadWrite {
     private String factoryType;
     private Map<String, ObjectPair<String, Object>> dbMap =
             Collections.synchronizedMap(new HashMap<String, ObjectPair<String, Object>>());
-    private Map<String, Map<String, String>> dbTable =
-            Collections.synchronizedMap(new HashMap<String, Map<String, String>>());
+    private Map<String, Map<String, ObjectPair<String, Object>>> dbTable =
+            Collections.synchronizedMap(new HashMap<String, Map<String, ObjectPair<String, Object>>>());
     private Map<ObjectPair<String, String>, List<String>> partCache = Collections
             .synchronizedMap(new HashMap<ObjectPair<String, String>, List<String>>());
 
@@ -194,7 +194,7 @@ public class GroundReadWrite {
     /**
      * Use this for unit testing only, so that a mock connection object can be
      * passed in.
-     * 
+     *
      * @param connection
      *            Mock connection objecct
      */
@@ -298,11 +298,11 @@ public class GroundReadWrite {
         this.dbMap = dbMap;
     }
 
-    public Map<String, Map<String, String>> getDbTable() {
+    public Map<String, Map<String, ObjectPair<String, Object>>> getDbTable() {
         return dbTable;
     }
 
-    public void setDbTable(Map<String, Map<String, String>> dbTable) {
+    public void setDbTable(Map<String, Map<String, ObjectPair<String, Object>>> dbTable) {
         this.dbTable = dbTable;
     }
 
