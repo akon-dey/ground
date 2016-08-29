@@ -67,9 +67,10 @@ public class GroundReadWrite {
     private EdgeVersionFactory edgeVersionFactory;
     private TagFactory tagFactory;
     private String factoryType;
+    /** these should be persisted and retrieved or change to a better way to map keys to nodeversionId. */
     private Map<String, ObjectPair<String, Object>> dbMap =
             Collections.synchronizedMap(new HashMap<String, ObjectPair<String, Object>>());
-    private Map<String, Map<String, ObjectPair<String, Object>>> dbTable =
+    private Map<String, Map<String, ObjectPair<String, Object>>> dbTableMap =
             Collections.synchronizedMap(new HashMap<String, Map<String, ObjectPair<String, Object>>>());
     private Map<ObjectPair<String, String>, List<String>> partCache = Collections
             .synchronizedMap(new HashMap<ObjectPair<String, String>, List<String>>());
@@ -298,12 +299,12 @@ public class GroundReadWrite {
         this.dbMap = dbMap;
     }
 
-    public Map<String, Map<String, ObjectPair<String, Object>>> getDbTable() {
-        return dbTable;
+    public Map<String, Map<String, ObjectPair<String, Object>>> getDbTableMap() {
+        return dbTableMap;
     }
 
-    public void setDbTable(Map<String, Map<String, ObjectPair<String, Object>>> dbTable) {
-        this.dbTable = dbTable;
+    public void setDbTableMap(Map<String, Map<String, ObjectPair<String, Object>>> dbTable) {
+        this.dbTableMap = dbTable;
     }
 
     public Map<ObjectPair<String, String>, List<String>> getPartCache() {

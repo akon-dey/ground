@@ -157,6 +157,7 @@ public class GroundStore implements RawStore, Configurable {
     public boolean dropDatabase(String dbName) throws NoSuchObjectException, MetaException {
         EntityState state = (EntityState) getGround().getDbMap().get(dbName).getSecond();
         if (state != null && state.equals(EntityState.ACTIVE)) {
+            //TODO create TOMBSTONE node
             ObjectPair<String, Object> updatedState = new ObjectPair<String, Object>(dbName, EntityState.DELETED);
             getGround().getDbMap().put(dbName, updatedState);
             return true;
@@ -232,8 +233,8 @@ public class GroundStore implements RawStore, Configurable {
 
     private void updateTableMetadata(Table tblCopy, String dbName, String tableName,
             ObjectPair<String, Object> tableState) {
-        synchronized (ground.getDbTable()) {
-            Map<String, Map<String, ObjectPair<String, Object>>> dbTable = ground.getDbTable();
+        synchronized (ground.getDbTableMap()) {
+            Map<String, Map<String, ObjectPair<String, Object>>> dbTable = ground.getDbTableMap();
             if (dbTable.containsKey(dbName)) {
                 dbTable.get(dbName).put(tblCopy.getTableName(),
                         tableState);
@@ -249,11 +250,12 @@ public class GroundStore implements RawStore, Configurable {
 
     public boolean dropTable(String dbName, String tableName)
             throws MetaException, NoSuchObjectException, InvalidObjectException, InvalidInputException {
-        EntityState state = (EntityState) getGround().getDbTable().get(dbName).get(tableName).getSecond();
+        EntityState state = (EntityState) getGround().getDbTableMap().get(dbName).get(tableName).getSecond();
         if (state != null && state.equals(EntityState.ACTIVE)) {
+            //TODO create TOMBSTONE
             ObjectPair<String, Object> updatedState =
                     new ObjectPair<String, Object>(tableName, EntityState.DELETED);
-            getGround().getDbTable().get(dbName).put(tableName, updatedState);
+            getGround().getDbTableMap().get(dbName).put(tableName, updatedState);
             return true;
         }
         return false;
@@ -263,7 +265,7 @@ public class GroundStore implements RawStore, Configurable {
     public Table getTable(String dbName, String tableName) throws MetaException {
         NodeVersion tableNodeVersion;
         try {
-            Map<String, ObjectPair<String, Object>> tableMap = getGround().getDbTable().get(dbName);
+            Map<String, ObjectPair<String, Object>> tableMap = getGround().getDbTableMap().get(dbName);
             if (tableMap == null) {
                 return null;
             }
@@ -392,7 +394,7 @@ public class GroundStore implements RawStore, Configurable {
 
     public List<String> getAllTables(String dbName) throws MetaException {
         ArrayList<String> list = new ArrayList<String>();
-        list.addAll(ground.getDbTable().get(dbName).keySet());
+        list.addAll(ground.getDbTableMap().get(dbName).keySet());
         return list;
     }
 
