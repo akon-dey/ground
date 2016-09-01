@@ -110,6 +110,7 @@ public class GroundStore implements RawStore, Configurable {
         //check if database node exists if yes return
         try {
             NodeVersion nodeVersion = getNodeVersion(db.getName());
+            //TODO Retreive version from node, bump up version and create a new node
             return;
         } catch (NoSuchObjectException e1) {
             //do nothing proceed and create the new DB
@@ -313,6 +314,17 @@ public class GroundStore implements RawStore, Configurable {
 
             Optional<Map<String, String>> parameters = Optional.of(partCopy.getParameters());
             String nodeName = HiveStringUtils.normalizeIdentifier(partId + partCopy.getCreateTime());
+            NodeVersion nodeVersion;
+            try {
+                nodeVersion = getNodeVersion(nodeName);
+                if (nodeVersion != null) {
+                    //part exists return
+                    return false;
+                }
+            } catch (NoSuchObjectException e) {
+                // do nothing here - continue to create a new partition
+            }
+
             String nodeId = nf.create(nodeName).getId();
             Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
             LOG.info("input partition from tag map: {} {}", tagsMap.get().get(partId).getKey(),
@@ -996,7 +1008,7 @@ public class GroundStore implements RawStore, Configurable {
         return tableNodeVersion;
     }
 
-    private Tag createTag(String id, Object value) {   
+    private Tag createTag(String id, Object value) {
         return createTag(DEFAULT_VERSION, id, value, Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
     }
 
