@@ -121,7 +121,8 @@ public class GroundStore implements RawStore, Configurable {
                     edu.berkeley.ground.api.versions.Type.fromString("string");
             String dbName = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
             NodeVersion n = createDatabaseNodeVersion(nf, nvf, dbCopy, dbType, dbName);
-            ObjectPair<String, Object> dbVersion = new ObjectPair<>(n.getId(), EntityState.ACTIVE); 
+            ObjectPair<String, Object> dbVersion = new ObjectPair<>(n.getId(), EntityState.ACTIVE);
+            //TODO remove dbMap once we find a way to fetch all databases from ground backend store
             ground.getDbMap().put(dbName, dbVersion);
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
@@ -163,14 +164,10 @@ public class GroundStore implements RawStore, Configurable {
 
     @Override
     public boolean dropDatabase(String dbName) throws NoSuchObjectException, MetaException {
-        EntityState state = (EntityState) getGround().getDbMap().get(dbName).getSecond();
-        if (state != null && state.equals(EntityState.ACTIVE)) {
-            //TODO create TOMBSTONE node
-            ObjectPair<String, Object> updatedState = new ObjectPair<String, Object>(dbName, EntityState.DELETED);
-            getGround().getDbMap().put(dbName, updatedState);
-            return true;
-        }
-        return false;
+        NodeVersion nodeVersion = getNodeVersion(dbName);
+        LOG.info("database deleted: {}, {}", dbName, nodeVersion.getNodeId());
+        //TODO create Tombstone node after bumping up version
+        return true;
     }
 
     @Override
@@ -221,6 +218,8 @@ public class GroundStore implements RawStore, Configurable {
         openTransaction();
         // HiveMetaStore above us checks if the table already exists, so we can
         // blindly store it here
+        String dbName = tbl.getDbName();
+        String tableName = tbl.getTableName();
         try {
             try {
                 getNodeVersion(tbl.getTableName());
@@ -229,8 +228,6 @@ public class GroundStore implements RawStore, Configurable {
                 //do nothing try creating a new node version
             }
             Table tblCopy = tbl.deepCopy();
-            String dbName = tblCopy.getDbName();
-            String tableName = tblCopy.getTableName();
             Map<String, Tag> tagsMap = new HashMap<>();
             tblCopy.setDbName(HiveStringUtils.normalizeIdentifier(dbName));
             tblCopy.setTableName(HiveStringUtils.normalizeIdentifier(tblCopy.getTableName()));
@@ -240,7 +237,7 @@ public class GroundStore implements RawStore, Configurable {
                     new ObjectPair<>(tableNodeVersion.getId(), EntityState.ACTIVE);
             updateTableMetadata(tblCopy, dbName, tableName, tableState);
         } catch (GroundException e) {
-            LOG.error("Unable to create table{} ", e);
+            LOG.error("Unable to create table {}  {}", dbName, tableName);
             throw new MetaException("Unable to read from or write ground database " + e.getMessage());
         }
     }
@@ -282,7 +279,7 @@ public class GroundStore implements RawStore, Configurable {
             Node node = getGround().getNodeFactory().retrieveFromDatabase(tableName);
             tableNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(node.getId());
         } catch (GroundException e) {
-            LOG.error("get failed for database ", tableName, e);
+            LOG.error("get failed for database: {}, {} ", dbName, tableName);
             throw new MetaException(e.getMessage());
         }
         Map<String, Tag> tblTag = tableNodeVersion.getTags().get();
@@ -415,6 +412,7 @@ public class GroundStore implements RawStore, Configurable {
 
     public List<String> getAllTables(String dbName) throws MetaException {
         ArrayList<String> list = new ArrayList<String>();
+        EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
         list.addAll(ground.getDbTableMap().get(dbName).keySet());
         return list;
     }
@@ -963,7 +961,7 @@ public class GroundStore implements RawStore, Configurable {
             Node node = getGround().getNodeFactory().retrieveFromDatabase(name);
             return getGround().getNodeVersionFactory().retrieveFromDatabase(node.getId());
         } catch (GroundException e) {
-            LOG.error("get failed for database ", name, e);
+            LOG.error("get failed for database {}", name);
             throw new NoSuchObjectException(e.getMessage());
         }
     }
@@ -994,15 +992,22 @@ public class GroundStore implements RawStore, Configurable {
         // create an edge to db which contains this table
         EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
         EdgeFactory ef = getGround().getEdgeFactory();
-        String edgeId = dbName + "." + tableName;
+
         Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
         Optional<Map<String, String>> parameters = Optional.of(tblCopy.getParameters());
         // new node for this table
         String nodeId = getGround().getNodeFactory().create(tableName).getId();
         NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(), Optional.empty(),
                 parameters, nodeId, Optional.empty());
-        Edge edge = ef.create(edgeId);
-        String dbNodeId = (String) ground.getDbMap().get(dbName).getFirst();
+        Edge edge = ef.create(dbName); //use data base (parent) name as edge identifier
+        //get Database NodeVersion - this will define from Node for the edge
+        String dbNodeId;
+        try {
+            dbNodeId = getNodeVersion(dbName).getId();
+        } catch (NoSuchObjectException e) {
+            LOG.error("error retrieving database node from ground store {}", dbName);
+            throw new GroundException(e);
+        }
         EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
                 edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
         return tableNodeVersion;
@@ -1047,7 +1052,7 @@ public class GroundStore implements RawStore, Configurable {
             partitonNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(id);
             LOG.debug("node id {}", partitonNodeVersion.getId());
         } catch (GroundException e) {
-            LOG.error("get failed for id:{}", e);
+            LOG.error("get failed for id:{}", id);
             throw new MetaException(e.getMessage());
         }
 

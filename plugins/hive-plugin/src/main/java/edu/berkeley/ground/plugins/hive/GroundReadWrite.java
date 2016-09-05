@@ -67,7 +67,7 @@ public class GroundReadWrite {
     private EdgeVersionFactory edgeVersionFactory;
     private TagFactory tagFactory;
     private String factoryType;
-    /** these should be persisted and retrieved or change to a better way to map keys to nodeversionId. */
+    /** dbMap and tableMap are intended ONLY for Testing will be removed.*/
     private Map<String, ObjectPair<String, Object>> dbMap =
             Collections.synchronizedMap(new HashMap<String, ObjectPair<String, Object>>());
     private Map<String, Map<String, ObjectPair<String, Object>>> dbTableMap =
