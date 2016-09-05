@@ -70,7 +70,7 @@ public class CassandraItemFactory extends ItemFactory {
         this.versionHistoryDAGFactory.addEdge(connectionPointer, dag, parentId, childId, itemId);
     }
 
-    private List<String> getLeaves(GroundDBConnection connection, String itemId) throws GroundException {
+    public List<String> getLeaves(GroundDBConnection connection, String itemId) throws GroundException {
         try {
             VersionHistoryDAG<?> dag = this.versionHistoryDAGFactory.retrieveFromDatabase(connection, itemId);
 

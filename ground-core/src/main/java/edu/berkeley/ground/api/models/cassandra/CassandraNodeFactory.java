@@ -54,6 +54,11 @@ public class CassandraNodeFactory extends NodeFactory {
         }
     }
 
+    public List<String> getLeaves(String name) throws GroundException {
+        CassandraConnection connection = this.dbClient.getConnection();
+        return this.itemFactory.getLeaves(connection, name);
+    }
+
     public Node retrieveFromDatabase(String name) throws GroundException {
         CassandraConnection connection = this.dbClient.getConnection();
 
@@ -78,4 +83,5 @@ public class CassandraNodeFactory extends NodeFactory {
     public void update(GroundDBConnection connection, String itemId, String childId, Optional<String> parent) throws GroundException {
         this.itemFactory.update(connection, itemId, childId, parent);
     }
+
 }
