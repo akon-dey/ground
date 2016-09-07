@@ -958,8 +958,10 @@ public class GroundStore implements RawStore, Configurable {
     /** Given an entity name retrieve its node version from database. */
     private NodeVersion getNodeVersion(String name) throws NoSuchObjectException {
         try {
-            Node node = getGround().getNodeFactory().retrieveFromDatabase(name);
-            return getGround().getNodeVersionFactory().retrieveFromDatabase(node.getId());
+            List<String> versions = getGround().getNodeFactory().getLeaves(name);
+            if (versions == null || versions.isEmpty())
+                return null;
+            return getGround().getNodeVersionFactory().retrieveFromDatabase(versions.get(0));
         } catch (GroundException e) {
             LOG.error("get failed for database {}", name);
             throw new NoSuchObjectException(e.getMessage());
