@@ -44,6 +44,8 @@ public class GroundStore implements RawStore, Configurable {
 
     static final private Logger LOG = LoggerFactory.getLogger(GroundStore.class.getName());
 
+    private static final String DB_STATE = "_DATABASE_STATE";
+
     // Do not access this directly, call getHBase to make sure it is
     // initialized.
     private GroundReadWrite ground = null;
@@ -121,9 +123,6 @@ public class GroundStore implements RawStore, Configurable {
                     edu.berkeley.ground.api.versions.Type.fromString("string");
             String dbName = HiveStringUtils.normalizeIdentifier(dbCopy.getName());
             NodeVersion n = createDatabaseNodeVersion(nf, nvf, dbCopy, dbType, dbName);
-            ObjectPair<String, Object> dbVersion = new ObjectPair<>(n.getId(), EntityState.ACTIVE);
-            //TODO remove dbMap once we find a way to fetch all databases from ground backend store
-            ground.getDbMap().put(dbName, dbVersion);
         } catch (GroundException e) {
             LOG.error("error creating database " + e);
             throw new MetaException(e.getMessage());
@@ -140,6 +139,8 @@ public class GroundStore implements RawStore, Configurable {
         Optional<String> parentId = Optional.empty();
         HashMap<String, Tag> tags = new HashMap<>();
         tags.put(dbName, dbTag);
+        Tag stateTag = createTag(dbName, EntityState.ACTIVE.name());
+        tags.put(DB_STATE, stateTag);
         //create a new tag map and populate all DB related metadata
         Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
         Map<String, String> dbParamMap = dbCopy.getParameters();
@@ -164,9 +165,17 @@ public class GroundStore implements RawStore, Configurable {
 
     @Override
     public boolean dropDatabase(String dbName) throws NoSuchObjectException, MetaException {
-        NodeVersion nodeVersion = getNodeVersion(dbName);
-        LOG.info("database deleted: {}, {}", dbName, nodeVersion.getNodeId());
-        //TODO create Tombstone node after bumping up version
+        NodeVersion databaseNodeVersion = getNodeVersion(dbName);
+        Map<String, Tag> dbTag = databaseNodeVersion.getTags().get();
+        String state = (String) dbTag.get(DB_STATE).getValue().get();
+        if (state.equals(EntityState.ACTIVE.name())) {
+            Tag stateTag = createTag(dbName, EntityState.DELETED.name());
+            HashMap<String, Tag> tags = new HashMap<>();
+            tags.put(DB_STATE, stateTag);
+            //TODO create Tombstone node after bumping up version
+        }
+        LOG.info("database deleted: {}, {}", dbName,
+                databaseNodeVersion.getNodeId());
         return true;
     }
 
@@ -185,7 +194,6 @@ public class GroundStore implements RawStore, Configurable {
     @Override
     public List<String> getAllDatabases() throws MetaException {
         List<String> list = new ArrayList<>();
-        list.addAll(getGround().getDbMap().keySet());
         return list;
     }
 
@@ -413,7 +421,7 @@ public class GroundStore implements RawStore, Configurable {
     public List<String> getAllTables(String dbName) throws MetaException {
         ArrayList<String> list = new ArrayList<String>();
         EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
-        list.addAll(ground.getDbTableMap().get(dbName).keySet());
+        // list.addAll(ground.getDbTableMap().get(dbName).keySet());
         return list;
     }
 

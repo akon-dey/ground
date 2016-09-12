@@ -67,9 +67,7 @@ public class GroundReadWrite {
     private EdgeVersionFactory edgeVersionFactory;
     private TagFactory tagFactory;
     private String factoryType;
-    /** dbMap and tableMap are intended ONLY for Testing will be removed.*/
-    private Map<String, ObjectPair<String, Object>> dbMap =
-            Collections.synchronizedMap(new HashMap<String, ObjectPair<String, Object>>());
+    /** tableMap are intended ONLY for Testing will be removed.*/
     private Map<String, Map<String, ObjectPair<String, Object>>> dbTableMap =
             Collections.synchronizedMap(new HashMap<String, Map<String, ObjectPair<String, Object>>>());
     private Map<ObjectPair<String, String>, List<String>> partCache = Collections
@@ -289,14 +287,6 @@ public class GroundReadWrite {
      */
     void putPartition(Partition partition) throws IOException {
         // TODO (krishna) use hbase model and PartitionCache to store
-    }
-
-    public Map<String, ObjectPair<String, Object>> getDbMap() {
-        return dbMap;
-    }
-
-    public void setDbMap(Map<String, ObjectPair<String, Object>> dbMap) {
-        this.dbMap = dbMap;
     }
 
     public Map<String, Map<String, ObjectPair<String, Object>>> getDbTableMap() {
