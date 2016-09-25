@@ -134,18 +134,22 @@ public class TestGroundMetastore {
         groundStore.createDatabase(db1);
         groundStore.createDatabase(db2);
 
-        List<String> databases = groundStore.getAllDatabases();
+        String dbName = groundStore.getDatabase(DB1).getName();
+        Assert.assertEquals(DB1,dbName);
+        dbName = groundStore.getDatabase(DB2).getName();
+        Assert.assertEquals(DB2,dbName);
+        //List<String> databases = groundStore.getAllDatabases();
         /** temporarily disable these tests. */
         // FIX Assert.assertEquals(3, databases.size());
-        // Assert.assertEquals(DB2, databases.get(0));
-        // Assert.assertEquals(DB1, databases.get(1));
-        Assert.assertEquals(true,groundStore.dropDatabase(DB1));
+        //Assert.assertEquals(DB2, databases.get(0));
+        //Assert.assertEquals(DB1, databases.get(1));
+        //Assert.assertEquals(true,groundStore.dropDatabase(DB1));
     }
 
     /**
      * Test table operations
      */
-    @Ignore
+    // @Ignore
     @Test
     public void testTableOps()
             throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
@@ -160,11 +164,12 @@ public class TestGroundMetastore {
         groundStore.createTable(tbl1);
         /** getAllTables TODO*/
         Table table = groundStore.getTable(DBTBL1, TABLE1);
-        // Assert.assertEquals(1, tables.size());
+        //Assert.assertEquals(1, tables.size());
         Assert.assertEquals(TABLE1, table.getTableName());
         Assert.assertEquals(true, groundStore.dropTable(DBTBL1, TABLE1));
     }
 
+    // @Ignore
     @Test
     public void testPartitionOps()
             throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {

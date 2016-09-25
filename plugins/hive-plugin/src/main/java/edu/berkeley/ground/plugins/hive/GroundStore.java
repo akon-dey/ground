@@ -120,8 +120,8 @@ public class GroundStore implements RawStore, Configurable {
                 edu.berkeley.ground.api.versions.Type dbType = edu.berkeley.ground.api.versions.Type
                         .fromString("string");
                 createDatabaseNodeVersion("2.0.0", nf, nvf, dbCopy, dbType, db.getName());
+                return;
             }
-            return;
         } catch (NoSuchObjectException | GroundException e1) {
             // do nothing proceed and create the new DB
         }
@@ -137,8 +137,23 @@ public class GroundStore implements RawStore, Configurable {
         }
     }
 
+    /** Given an entity name retrieve its node version from database. */
+    private NodeVersion getNodeVersion(String name) throws NoSuchObjectException {
+        try {
+            LOG.info("getting node versions for {}", name);
+            List<String> versions = getGround().getNodeFactory().getLeaves("Nodes." + name);
+            if (versions == null || versions.isEmpty())
+                return null;
+            return getGround().getNodeVersionFactory().retrieveFromDatabase(versions.get(0));
+        } catch (GroundException e) {
+            LOG.error("get failed for database {}", name);
+            throw new NoSuchObjectException(e.getMessage());
+        }
+    }
+
     private boolean checkNodeStatus(NodeVersion nodeVersion) {
         if (nodeVersion == null) {
+            LOG.debug("node version is not available");
             return false;
         }
         Optional<Map<String, Tag>> dbTag = nodeVersion.getTags();
@@ -166,7 +181,7 @@ public class GroundStore implements RawStore, Configurable {
         Optional<String> parentId = Optional.empty();
         HashMap<String, Tag> tags = new HashMap<>();
         tags.put(dbName, dbTag);
-        Tag stateTag = createTag(dbName, EntityState.ACTIVE.name());
+        Tag stateTag = createTag(dbName + DB_STATE, EntityState.ACTIVE.name());
         tags.put(DB_STATE, stateTag);
         // create a new tag map and populate all DB related metadata
         Optional<Map<String, Tag>> tagsMap = Optional.of(tags);
@@ -188,6 +203,7 @@ public class GroundStore implements RawStore, Configurable {
     public Database getDatabase(String dbName) throws NoSuchObjectException {
         NodeVersion databaseNodeVersion = getNodeVersion(dbName);
         if (databaseNodeVersion == null) {
+            LOG.info("database node version is not present");
             return null;
         }
         Map<String, Tag> dbTag = databaseNodeVersion.getTags().get();
@@ -269,8 +285,11 @@ public class GroundStore implements RawStore, Configurable {
         String tableName = tbl.getTableName();
         try {
             try {
-                getNodeVersion(tbl.getTableName());
-                return;
+                if (getNodeVersion(tbl.getTableName()) != null) {
+                    //table exists - check its state and create as needed
+                    //TODO state check
+                    return;
+                }
             } catch (NoSuchObjectException e) {
                 // do nothing try creating a new node version
             }
@@ -288,6 +307,94 @@ public class GroundStore implements RawStore, Configurable {
         }
     }
 
+    /** Create node version for the given table. */
+    private NodeVersion createTableNodeVersion(Table tblCopy, String dbName, String tableName,
+            Map<String, Tag> tagsMap) throws GroundException {
+        return createTableNodeVersion(DEFAULT_VERSION, tblCopy, dbName, tableName, tagsMap);
+    }
+    /** Create node version for the given table. */
+    private NodeVersion createTableNodeVersion(String version, Table tblCopy, String dbName, String tableName,
+            Map<String, Tag> tagsMap) throws GroundException {
+        Gson gson = new Gson();
+        Tag tblTag = null;
+        if (tblCopy == null) {// create a tombstone node
+            tblTag = createTag("deleted", tableName, gson.toJson(""),
+                    Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
+            tagsMap.put(tableName, tblTag);
+            String id = tableName + TABLE_STATE;
+            Tag stateTag = createTag(id, EntityState.DELETED.name());
+            tagsMap.put(id, stateTag);
+            String nodeId = getGround().getNodeFactory().create(tableName + "deleted").getId();
+            Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
+            Optional<Map<String, String>> parameters = Optional.empty();
+            Optional <String> deletedVersion = Optional.of("deleted");
+            return getGround().getNodeVersionFactory().create(tags, Optional.empty(),
+                    Optional.empty(), parameters, nodeId, Optional.empty());
+        } else {
+            tblTag = createTag(version, tableName, gson.toJson(tblCopy),
+                Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
+        }
+        tagsMap.put(tableName, tblTag);
+        String id = tableName + TABLE_STATE;
+        Tag stateTag = createTag(id, EntityState.ACTIVE.name());
+        tagsMap.put(id, stateTag);
+        // create an edge to db which contains this table
+        EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
+        EdgeFactory ef = getGround().getEdgeFactory();
+
+        Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
+        Optional<Map<String, String>> parameters = Optional.of(tblCopy.getParameters());
+        // new node for this table
+        String nodeId = getGround().getNodeFactory().create(tableName).getId();
+        NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(),
+                Optional.empty(), parameters, nodeId, Optional.empty());
+        Edge edge = ef.create(dbName); // use data base (parent) name as edge
+                                       // identifier
+        // get Database NodeVersion - this will define from Node for the edge
+        String dbNodeId;
+        try {
+            dbNodeId = getNodeVersion(dbName).getId();
+        } catch (NoSuchObjectException e) {
+            LOG.error("error retrieving database node from ground store {}", dbName);
+            throw new GroundException(e);
+        }
+        EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+                edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
+        return tableNodeVersion;
+    }
+
+    private Tag createTag(String id, Object value) {
+        return createTag(DEFAULT_VERSION, id, value, Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
+    }
+
+    private Tag createTag(String version, String id, Object value,
+            Optional<edu.berkeley.ground.api.versions.Type> type) {
+        return new Tag(version, id, Optional.of(value), type);
+    }
+
+    /**
+     * Using utilities from Hive HBaseStore
+     * 
+     * @param tbl
+     */
+    private void normalizeColumnNames(Table tbl) {
+        if (tbl.getSd().getCols() != null) {
+            tbl.getSd().setCols(normalizeFieldSchemaList(tbl.getSd().getCols()));
+        }
+        if (tbl.getPartitionKeys() != null) {
+            tbl.setPartitionKeys(normalizeFieldSchemaList(tbl.getPartitionKeys()));
+        }
+    }
+
+    private List<FieldSchema> normalizeFieldSchemaList(List<FieldSchema> fieldschemas) {
+        List<FieldSchema> ret = new ArrayList<>();
+        for (FieldSchema fieldSchema : fieldschemas) {
+            ret.add(new FieldSchema(fieldSchema.getName().toLowerCase(), fieldSchema.getType(),
+                    fieldSchema.getComment()));
+        }
+        return ret;
+    }
+
     private void updateTableMetadata(Table tblCopy, String dbName, String tableName,
             ObjectPair<String, Object> tableState) {
         synchronized (ground.getDbTableMap()) {
@@ -302,19 +409,25 @@ public class GroundStore implements RawStore, Configurable {
         }
     }
 
+    @Override
     public boolean dropTable(String dbName, String tableName)
             throws MetaException, NoSuchObjectException, InvalidObjectException, InvalidInputException {
         NodeVersion tableNodeVersion = getNodeVersion(tableName); //TODO use database as well use edge/construct from ground
         Map<String, Tag> tblTag = tableNodeVersion.getTags().get();
-        String state = (String) tblTag.get(TABLE_STATE).getValue().get();
+        if (tblTag == null) {
+            LOG.info("node version getTags failed");
+            return false;
+        }
+        
+        String state = (String) tblTag.get(tableName + TABLE_STATE).getValue().get();
         if (state.equals(EntityState.ACTIVE.name())) {
-            Tag stateTag = createTag(dbName, EntityState.DELETED.name());
+            Tag stateTag = createTag(tableName + TABLE_STATE + "deleted", EntityState.DELETED.name());
             HashMap<String, Tag> tags = new HashMap<>();
             tags.put(DB_STATE, stateTag);
             try {
                 createTableNodeVersion(DEFAULT_VERSION, null, dbName, tableName, tags);
             } catch (GroundException e) {
-                throw new MetaException ();
+                throw new MetaException (e.getMessage());
             }
             return true;
         }
@@ -325,14 +438,15 @@ public class GroundStore implements RawStore, Configurable {
     public Table getTable(String dbName, String tableName) throws MetaException {
         NodeVersion tableNodeVersion;
         try {
-            List<String> versions = getGround().getNodeFactory().getLeaves(tableName);
+            LOG.info("getting versions for table {}", tableName);
+            List<String> versions = getGround().getNodeFactory().getLeaves("Nodes." + tableName);
             tableNodeVersion = getGround().getNodeVersionFactory().retrieveFromDatabase(versions.get(0));
         } catch (GroundException e) {
             LOG.error("get failed for database: {}, {} ", dbName, tableName);
             throw new MetaException(e.getMessage());
         }
         Map<String, Tag> tblTag = tableNodeVersion.getTags().get();
-        String tblJson = (String) tblTag.get(dbName).getValue().get();
+        String tblJson = (String) tblTag.get(tableName).getValue().get();
         return (Table) createMetastoreObject(tblJson, Table.class);
         // return (Table) tblTag.get(tableName).getValue().get();
     }
@@ -1006,19 +1120,6 @@ public class GroundStore implements RawStore, Configurable {
 
     }
 
-    /** Given an entity name retrieve its node version from database. */
-    private NodeVersion getNodeVersion(String name) throws NoSuchObjectException {
-        try {
-            List<String> versions = getGround().getNodeFactory().getLeaves(name);
-            if (versions == null || versions.isEmpty())
-                return null;
-            return getGround().getNodeVersionFactory().retrieveFromDatabase(versions.get(0));
-        } catch (GroundException e) {
-            LOG.error("get failed for database {}", name);
-            throw new NoSuchObjectException(e.getMessage());
-        }
-    }
-
     private <T> Object createMetastoreObject(String dbJson, Class<T> klass) {
         Gson gson = new Gson();
         return gson.fromJson(dbJson, klass);
@@ -1035,82 +1136,6 @@ public class GroundStore implements RawStore, Configurable {
         return ground;
     }
 
-    /** Create node version for the given table. */
-    private NodeVersion createTableNodeVersion(Table tblCopy, String dbName, String tableName,
-            Map<String, Tag> tagsMap) throws GroundException {
-        return createTableNodeVersion(DEFAULT_VERSION, tblCopy, dbName, tableName, tagsMap);
-    }
-    /** Create node version for the given table. */
-    private NodeVersion createTableNodeVersion(String version, Table tblCopy, String dbName, String tableName,
-            Map<String, Tag> tagsMap) throws GroundException {
-        Gson gson = new Gson();
-        Tag tblTag = null;
-        if (tblCopy == null) {// create a tombstone node
-            tblTag = createTag(version, dbName, gson.toJson(""),
-                    Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
-        } else {
-            tblTag = createTag(version, dbName, gson.toJson(tblCopy),
-                Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
-        }
-        tagsMap.put(tableName, tblTag);
-        Tag stateTag = createTag(dbName, EntityState.ACTIVE.name());
-        tagsMap.put(TABLE_STATE, stateTag);
-        // create an edge to db which contains this table
-        EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
-        EdgeFactory ef = getGround().getEdgeFactory();
-
-        Optional<Map<String, Tag>> tags = Optional.of(tagsMap);
-        Optional<Map<String, String>> parameters = Optional.of(tblCopy.getParameters());
-        // new node for this table
-        String nodeId = getGround().getNodeFactory().create(tableName).getId();
-        NodeVersion tableNodeVersion = getGround().getNodeVersionFactory().create(tags, Optional.empty(),
-                Optional.empty(), parameters, nodeId, Optional.empty());
-        Edge edge = ef.create(dbName); // use data base (parent) name as edge
-                                       // identifier
-        // get Database NodeVersion - this will define from Node for the edge
-        String dbNodeId;
-        try {
-            dbNodeId = getNodeVersion(dbName).getId();
-        } catch (NoSuchObjectException e) {
-            LOG.error("error retrieving database node from ground store {}", dbName);
-            throw new GroundException(e);
-        }
-        EdgeVersion ev = evf.create(Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-                edge.getId(), dbNodeId, tableNodeVersion.getId(), Optional.empty());
-        return tableNodeVersion;
-    }
-
-    private Tag createTag(String id, Object value) {
-        return createTag(DEFAULT_VERSION, id, value, Optional.of(edu.berkeley.ground.api.versions.Type.STRING));
-    }
-
-    private Tag createTag(String version, String id, Object value,
-            Optional<edu.berkeley.ground.api.versions.Type> type) {
-        return new Tag(version, id, Optional.of(value), type);
-    }
-
-    /**
-     * Using utilities from Hive HBaseStore
-     * 
-     * @param tbl
-     */
-    private void normalizeColumnNames(Table tbl) {
-        if (tbl.getSd().getCols() != null) {
-            tbl.getSd().setCols(normalizeFieldSchemaList(tbl.getSd().getCols()));
-        }
-        if (tbl.getPartitionKeys() != null) {
-            tbl.setPartitionKeys(normalizeFieldSchemaList(tbl.getPartitionKeys()));
-        }
-    }
-
-    private List<FieldSchema> normalizeFieldSchemaList(List<FieldSchema> fieldschemas) {
-        List<FieldSchema> ret = new ArrayList<>();
-        for (FieldSchema fieldSchema : fieldschemas) {
-            ret.add(new FieldSchema(fieldSchema.getName().toLowerCase(), fieldSchema.getType(),
-                    fieldSchema.getComment()));
-        }
-        return ret;
-    }
 
     // use NodeVersion ID to retrieve serialized partition string from Ground
     // backend
