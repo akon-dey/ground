@@ -258,7 +258,6 @@ public class GroundStore extends GroundMetaStore {
    public List<String> getAllTables(String dbName) throws MetaException {
        ArrayList<String> list = new ArrayList<String>();
        EdgeVersionFactory evf = getGround().getEdgeVersionFactory();
-       // list.addAll(ground.getDbTableMap().get(dbName).keySet());
        return list;
    }
 
