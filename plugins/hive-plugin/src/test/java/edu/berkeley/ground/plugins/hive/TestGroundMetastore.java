@@ -127,23 +127,21 @@ public class TestGroundMetastore {
      * Test database operations
      */
     @Test
-    // @Ignore
     public void testDatabaseOps() throws MetaException, InvalidObjectException, NoSuchObjectException {
         Database db1 = new Database(DB1, "description", "locationurl", new HashMap<String, String>());
         Database db2 = new Database(DB2, "description", "locationurl", new HashMap<String, String>());
         groundStore.createDatabase(db1);
         groundStore.createDatabase(db2);
-
         String dbName = groundStore.getDatabase(DB1).getName();
-        Assert.assertEquals(DB1,dbName);
+        Assert.assertEquals(DB1, dbName);
         dbName = groundStore.getDatabase(DB2).getName();
-        Assert.assertEquals(DB2,dbName);
+        Assert.assertEquals(DB2, dbName);
         //List<String> databases = groundStore.getAllDatabases();
         /** temporarily disable these tests. */
         // FIX Assert.assertEquals(3, databases.size());
         //Assert.assertEquals(DB2, databases.get(0));
         //Assert.assertEquals(DB1, databases.get(1));
-        //Assert.assertEquals(true,groundStore.dropDatabase(DB1));
+        Assert.assertEquals(true, groundStore.dropDatabase(DB1));
     }
 
     /**
@@ -169,8 +167,8 @@ public class TestGroundMetastore {
         Assert.assertEquals(true, groundStore.dropTable(DBTBL1, TABLE1));
     }
 
-    @Ignore
     @Test
+    @Ignore
     public void testPartitionOps()
             throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
         Database db1 = new Database(DBPART1, "description", "locationurl", new HashMap<String, String>());
