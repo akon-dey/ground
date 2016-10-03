@@ -274,31 +274,30 @@ public class GroundStore extends GroundMetaStore {
            String partId = objectPair.toString();
            partCopy.setTableName(HiveStringUtils.normalizeIdentifier(tableName));
            Gson gson = new Gson();
-           Tag partTag = createTag(partId, gson.toJson(partCopy));
-           String reference = partCopy.getSd().getLocation();
-           List<String> parents = new ArrayList<>();
-           StructureVersion sv = createStructureVersion(partId, parents);
-           Map<String, Tag> tags = new HashMap<>();
-           tags.put(partId, partTag);
-
-           Map<String, String> parameters = partCopy.getParameters();
-           String nodeName = HiveStringUtils.normalizeIdentifier(partId + partCopy.getCreateTime());
-           NodeVersion nodeVersion;
+           Tag partTag;
+           String nodeName = HiveStringUtils.normalizeIdentifier(partId +
+                   partCopy.getCreateTime());
+           String nodeId = null;
            try {
-               nodeVersion = getNodeVersion(nodeName);
-               if (nodeVersion != null) {
-                   // part exists return
-                   return false;
-               }
-           } catch (NoSuchObjectException e) {
-               // do nothing here - continue to create a new partition
+               nodeId = nf.retrieveFromDatabase(nodeName).getId();
+           } catch (GroundException e) {
+               LOG.info("node not there in database create new");
+           }
+           if (nodeId == null) {
+               nodeId = nf.create(nodeName).getId();
            }
 
-           String nodeId = nf.create(nodeName).getId();
-           Map<String, Tag> tagsMap = tags;
-           LOG.info("input partition from tag map: {} {}", tagsMap.get(partId).getKey(),
-                   tagsMap.get(partId).getValue());
-           NodeVersion n = nvf.create(tagsMap, sv.getId(), reference, parameters, nodeId, parents);
+           String reference = partCopy.getSd().getLocation();
+           List<String> parents = new ArrayList<>();
+           Map<String, Tag> tags = new HashMap<>();
+           partTag = createTag(nodeName, gson.toJson(partCopy));
+           tags.put(partId, partTag);
+           Map<String, String> parameters = partCopy.getParameters();
+           StructureVersion sv = createStructureVersion(nodeName, parents);
+
+           LOG.info("input partition from tag map: {} {}", tags.get(partId).getKey(),
+                   tags.get(partId).getValue());
+           NodeVersion n = nvf.create(tags, sv.getId(), reference, parameters, nodeId, parents);
            List<String> partList = ground.getPartCache().get(objectPair);
            if (partList == null) {
                partList = new ArrayList<>();
@@ -525,8 +524,13 @@ public class GroundStore extends GroundMetaStore {
        return ret;
    }
 
-   // use NodeVersion ID to retrieve serialized partition string from Ground
-   // backend
+   /**
+    * Internal method to get a partition from database
+    * @param id
+    * @return
+    * @throws MetaException
+    * @throws NoSuchObjectException
+    */
    private Partition getPartition(String id) throws MetaException, NoSuchObjectException {
        NodeVersion partitonNodeVersion;
        try {

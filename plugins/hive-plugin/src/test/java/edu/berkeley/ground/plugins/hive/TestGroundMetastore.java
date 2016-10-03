@@ -147,7 +147,6 @@ public class TestGroundMetastore {
     /**
      * Test table operations
      */
-    // @Ignore
     @Test
     public void testTableOps()
             throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
@@ -168,7 +167,6 @@ public class TestGroundMetastore {
     }
 
     @Test
-    @Ignore
     public void testPartitionOps()
             throws MetaException, InvalidObjectException, NoSuchObjectException, InvalidInputException {
         Database db1 = new Database(DBPART1, "description", "locationurl", new HashMap<String, String>());
