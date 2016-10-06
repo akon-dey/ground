@@ -50,6 +50,8 @@ public class GroundStore extends GroundMetaStore {
     private static final String TABLE_STATE = "_TABLE_STATE";
     private static final String TABLE_VERSION = "_TABLE_VERSION";
 
+    private static final String METASTORE_NODE = "_METASTORE";
+
     // Do not access this directly, call getGround to make sure it is
     // initialized.
     private GroundReadWrite ground = null;
@@ -106,6 +108,56 @@ public class GroundStore extends GroundMetaStore {
         // throw new UnsupportedOperationException();
     }
 
+    @Override
+    public boolean alterDatabase(String dbname, Database db) throws NoSuchObjectException, MetaException {
+        if (dbname == null || dbname.isEmpty() || db == null)
+            throw new NoSuchObjectException("Unable to locate database " + dbname + " with " + db);
+        try {
+            dropDatabase(dbname);
+            createDatabase(db);
+        } catch (NoSuchObjectException | MetaException ex) {
+            LOG.debug("Alter database failed with: " + ex.getMessage());
+            throw ex;
+        } catch (InvalidObjectException ex) {
+            LOG.debug("Alter database failed with: " + ex.getMessage());
+            throw new MetaException("Alter database failed: " + ex.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public List<String> getDatabases(String dbPattern) throws MetaException {
+        List<String> databases = new ArrayList<String>();
+        try {
+            List<String> versions = ground.getNodeFactory().getLeaves(METASTORE_NODE);
+
+            if (!versions.isEmpty()) {
+                String metaVersionId = versions.get(0);
+                List<String> dbNodeIds = ground.getNodeVersionFactory().getAdjacentNodes(metaVersionId, dbPattern);
+                for (String dbNodeId : dbNodeIds) {
+                    NodeVersion dbNodeVersion = ground.getNodeVersionFactory().retrieveFromDatabase(dbNodeId);
+                    // fetch the edge for the dbname
+                    Edge edge = ground.getEdgeFactory().retrieveFromDatabase(dbNodeVersion.getNodeId());
+                    databases.add(edge.getName().split("Nodes.")[1]);
+                }
+            }
+        } catch (GroundException ex) {
+            LOG.error("Get databases failed for pattern {}", dbPattern);
+            throw new MetaException(ex.getMessage());
+        }
+        return databases;
+    }
+
+    @Override
+    public List<String> getAllDatabases() throws MetaException {
+        try {
+            return this.getDatabases("");
+        } catch (MetaException ex) {
+            LOG.error("Failed to get all databases");
+            throw new MetaException(ex);
+        }
+    }
+
     /**
      * create a database using ground APIs. Uses node and node version.
      */
@@ -113,7 +165,8 @@ public class GroundStore extends GroundMetaStore {
     public void createDatabase(Database db) throws InvalidObjectException, MetaException {
         NodeFactory nf = getGround().getNodeFactory();
         NodeVersionFactory nvf = getGround().getNodeVersionFactory();
-        // check if database node exists if yes return
+        // TODO create metanode first if it does not exist
+        // then check if database node exists if yes return
         try {
             String dbName = db.getName();
             NodeVersion nodeVersion = getNodeVersion(dbName);
